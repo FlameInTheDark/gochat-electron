@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/FlameInTheDark/gochat-electron/compare/v1.0.0...v1.0.1) (2026-03-18)
+
+
+### Bug Fixes
+
+* added icons and changed pipeline for mac ([bcf70da](https://github.com/FlameInTheDark/gochat-electron/commit/bcf70da30ff0f6caa4e857d1873b392f6167cb68))
+
 # 1.0.0 (2026-03-18)
 
 
