@@ -131,6 +131,12 @@ function createTray() {
 const createWindow = () => {
   const state = loadWindowState();
 
+  const iconPath = path.join(
+    app.isPackaged ? process.resourcesPath : app.getAppPath(),
+    'assets',
+    'icon.png',
+  );
+
   mainWindow = new BrowserWindow({
     x: state.x,
     y: state.y,
@@ -142,6 +148,7 @@ const createWindow = () => {
     titleBarStyle: 'hidden',
     show: false,
     backgroundColor: '#1e1f22',
+    icon: fs.existsSync(iconPath) ? iconPath : undefined,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
     },
