@@ -10,11 +10,16 @@ import { FuseV1Options, FuseVersion } from '@electron/fuses';
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    icon: process.platform === 'darwin'
+      ? './build/icons/mac/icon'
+      : process.platform === 'win32'
+        ? './build/icons/win/icon'
+        : './build/icons/png/512x512',
   },
   rebuildConfig: {},
   makers: [
     new MakerSquirrel({
-      setupIcon: './assets/icon.ico',
+      setupIcon: './build/icons/win/icon.ico',
     }),
     new MakerZIP({}, ['darwin']),
     new MakerRpm({}),

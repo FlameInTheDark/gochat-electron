@@ -1,6 +1,6 @@
 {
   "name": "gochat-electron",
-  "productName": "gochat-electron",
+  "productName": "GoChat",
   "version": "1.0.1",
   "description": "My Electron application description",
   "main": ".vite/build/main.js",

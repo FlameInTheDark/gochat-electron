@@ -133,8 +133,7 @@ const createWindow = () => {
 
   const iconPath = path.join(
     app.isPackaged ? process.resourcesPath : app.getAppPath(),
-    'assets',
-    'icon.png',
+    'build', 'icons', 'png', '512x512.png',
   );
 
   mainWindow = new BrowserWindow({
