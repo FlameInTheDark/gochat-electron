@@ -67,35 +67,6 @@ jobs:
             gh release upload "${{ github.event.release.tag_name }}" "$f" --clobber
           done
 
-  build-macos-x64:
-    name: Build / macOS (x64)
-    runs-on: macos-13
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.release.tag_name }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build
-        run: npm run make
-
-      - name: Upload artifacts
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          find out/make -type f -name "*.zip" | while read f; do
-            gh release upload "${{ github.event.release.tag_name }}" "$f" --clobber
-          done
-
   build-linux:
     name: Build / Linux
     runs-on: ubuntu-latest
