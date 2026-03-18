@@ -34,7 +34,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          find out/make -type f \( -name "*.exe" -o -name "*.nupkg" \) | while read f; do
+          find out/make -type f \( -name "*.exe" -o -name "*.nupkg" -o -name "RELEASES" \) | while read f; do
             gh release upload "${{ github.event.release.tag_name }}" "$f" --clobber
           done
 
