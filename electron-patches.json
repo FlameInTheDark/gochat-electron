@@ -1,0 +1,20 @@
+{
+  "comment": "Files that must NOT be overwritten by scripts/sync-web.mjs",
+  "new": [
+    "src/main.ts",
+    "src/main.tsx",
+    "src/preload.ts",
+    "src/renderer.tsx",
+    "src/components/layout/TitleBar.tsx",
+    "src/components/modals/ConnectionConfigModal.tsx",
+    "src/stores/connectionStore.ts",
+    "src/electron/bridge.ts",
+    "src/stores/backgroundStore.ts"
+  ],
+  "patched": [
+    "src/App.tsx",
+    "src/pages/LoginPage.tsx",
+    "src/pages/app/AppLayout.tsx",
+    "src/components/layout/AppShell.tsx"
+  ]
+}

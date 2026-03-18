@@ -1,0 +1,62 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>GoChat</title>
+    <style>
+      body { background: #1e1f22; }
+      #splash {
+        position: fixed;
+        inset: 0;
+        background: #1e1f22;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        color: #fff;
+        font-family: system-ui, -apple-system, sans-serif;
+        user-select: none;
+        z-index: 9999;
+        transition: opacity 0.25s ease;
+      }
+      #splash-title {
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+      }
+      #splash-spinner {
+        width: 28px;
+        height: 28px;
+        border: 2px solid rgba(255,255,255,0.15);
+        border-top-color: rgba(255,255,255,0.6);
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+  </head>
+  <body>
+    <div id="splash">
+      <div id="splash-title">GoChat</div>
+      <div id="splash-spinner"></div>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/renderer.tsx"></script>
+    <script>
+      // Fallback: if React never calls removeSplash() (e.g. startup error),
+      // fade out and remove the splash after 8 seconds so the user isn't stuck.
+      window.__splashRemoved = false;
+      window.removeSplash = function() {
+        if (window.__splashRemoved) return;
+        window.__splashRemoved = true;
+        var el = document.getElementById('splash');
+        if (!el) return;
+        el.style.opacity = '0';
+        setTimeout(function() { el.remove(); }, 260);
+      };
+      setTimeout(window.removeSplash, 8000);
+    </script>
+  </body>
+</html>
