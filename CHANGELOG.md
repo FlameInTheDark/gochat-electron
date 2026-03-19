@@ -1,3 +1,10 @@
+## [1.1.3](https://github.com/FlameInTheDark/gochat-electron/compare/v1.1.2...v1.1.3) (2026-03-19)
+
+
+### Bug Fixes
+
+* icon and avatar update after upload ([ede6001](https://github.com/FlameInTheDark/gochat-electron/commit/ede6001147109924be19ac38076b1e333dee2e31))
+
 ## [1.1.2](https://github.com/FlameInTheDark/gochat-electron/compare/v1.1.1...v1.1.2) (2026-03-19)
 
 
