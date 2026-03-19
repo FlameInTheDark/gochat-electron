@@ -1,3 +1,10 @@
+## [1.1.2](https://github.com/FlameInTheDark/gochat-electron/compare/v1.1.1...v1.1.2) (2026-03-19)
+
+
+### Bug Fixes
+
+* cache fixes for electron ([a1171a2](https://github.com/FlameInTheDark/gochat-electron/commit/a1171a27784f57372b6cde8e9de282456ed02509))
+
 ## [1.1.1](https://github.com/FlameInTheDark/gochat-electron/compare/v1.1.0...v1.1.1) (2026-03-19)
 
 
