@@ -1,3 +1,15 @@
+# [1.1.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.0.1...v1.1.0) (2026-03-19)
+
+
+### Bug Fixes
+
+* app icons and name ([9024ac3](https://github.com/FlameInTheDark/gochat-electron/commit/9024ac36f313766320db4f9093a93f9bee6453ce))
+
+
+### Features
+
+* additional user profile customization ([fb4b51d](https://github.com/FlameInTheDark/gochat-electron/commit/fb4b51d779cd0fa1ffef1d35de9d2b33d50388ce))
+
 ## [1.0.1](https://github.com/FlameInTheDark/gochat-electron/compare/v1.0.0...v1.0.1) (2026-03-18)
 
 
