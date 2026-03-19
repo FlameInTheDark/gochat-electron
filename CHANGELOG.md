@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/FlameInTheDark/gochat-electron/compare/v1.1.0...v1.1.1) (2026-03-19)
+
+
+### Bug Fixes
+
+* linux build and cache fix ([e0c1bba](https://github.com/FlameInTheDark/gochat-electron/commit/e0c1bba02283cf25c0dd51d60cacc33c9723e7ed))
+
 # [1.1.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.0.1...v1.1.0) (2026-03-19)
 
 
