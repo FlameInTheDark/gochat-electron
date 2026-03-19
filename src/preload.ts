@@ -34,6 +34,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Open URLs in system browser
   openExternal: (url: string) => ipcRenderer.send('shell:open-external', url),
 
+  // Auto-updater
+  onUpdateReady: (cb: () => void) => {
+    const handler = () => cb();
+    ipcRenderer.on('update:ready', handler);
+    return () => ipcRenderer.removeListener('update:ready', handler);
+  },
+  installUpdate: () => ipcRenderer.send('update:install'),
+
   // Secure token storage (OS-encrypted via safeStorage in main process).
   // Synchronous so authStore can read tokens at module-init time.
   secureStore: {

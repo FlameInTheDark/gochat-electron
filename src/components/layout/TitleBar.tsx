@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Minus, Square, X, Maximize2, Settings } from 'lucide-react'
+import { Minus, Square, X, Maximize2, Settings, Download } from 'lucide-react'
 import ConnectionConfigModal from '@/components/modals/ConnectionConfigModal'
 
 declare global {
@@ -14,6 +14,8 @@ declare global {
       setTrayBadge: (count: number) => void
       onDeepLink: (cb: (url: string) => void) => () => void
       openExternal: (url: string) => void
+      onUpdateReady: (cb: () => void) => () => void
+      installUpdate: () => void
       secureStore: {
         get: (key: string) => string | null
         set: (key: string, value: string) => void
@@ -26,12 +28,17 @@ declare global {
 export default function TitleBar() {
   const [isMaximized, setIsMaximized] = useState(false)
   const [configOpen, setConfigOpen] = useState(false)
+  const [updateReady, setUpdateReady] = useState(false)
 
   useEffect(() => {
     if (!window.electronAPI) return
     window.electronAPI.isMaximized().then(setIsMaximized)
     const cleanup = window.electronAPI.onMaximizeChange(setIsMaximized)
     return cleanup
+  }, [])
+
+  useEffect(() => {
+    return window.electronAPI?.onUpdateReady(() => setUpdateReady(true))
   }, [])
 
   return (
@@ -58,9 +65,19 @@ export default function TitleBar() {
         </span>
 
         <div
-          className="flex h-full"
+          className="flex h-full items-center"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
+          {updateReady && (
+            <button
+              onClick={() => window.electronAPI?.installUpdate()}
+              className="mr-2 flex items-center gap-1.5 rounded bg-green-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-green-500 transition-colors"
+              title="Update ready — click to restart and install"
+            >
+              <Download size={12} />
+              Restart to update
+            </button>
+          )}
           <button
             onClick={() => window.electronAPI?.minimize()}
             className="w-12 h-full flex items-center justify-center text-white/60 hover:bg-white/10 hover:text-white transition-colors"

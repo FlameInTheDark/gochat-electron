@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, Notification, safeStorage } from 'electron';
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, Notification, safeStorage, autoUpdater } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import started from 'electron-squirrel-startup';
@@ -194,6 +194,9 @@ app.on('ready', () => {
   if (app.isPackaged) {
     import('update-electron-app').then(({ updateElectronApp }) => {
       updateElectronApp({ updateInterval: '1 hour' });
+      autoUpdater.on('update-downloaded', () => {
+        mainWindow?.webContents.send('update:ready');
+      });
     }).catch(() => { /* no-op if package not installed */ });
   }
 });
@@ -269,6 +272,11 @@ ipcMain.on('tray:badge', (_e, count: number) => {
 
 ipcMain.on('shell:open-external', (_e, url: string) => {
   shell.openExternal(url);
+});
+
+ipcMain.on('update:install', () => {
+  app.isQuitting = true;
+  autoUpdater.quitAndInstall();
 });
 
 // ── Badge canvas helper ───────────────────────────────────────────────────────
