@@ -3,7 +3,59 @@ import path from 'node:path';
 import fs from 'node:fs';
 import started from 'electron-squirrel-startup';
 
+const USER_DATA_DIR = path.join(app.getPath('appData'), 'gochat-electron');
+const SESSION_DATA_DIR = path.join(USER_DATA_DIR, 'session-data');
+const SESSION_DATA_MIGRATION_MARKER = path.join(SESSION_DATA_DIR, '.migrated-from-user-data');
+const SESSION_DATA_MIGRATION_ENTRIES = [
+  'Local Storage',
+  'Session Storage',
+  'IndexedDB',
+  'Network',
+  'Preferences',
+] as const;
+
+// Keep app-owned files in the stable userData root and move Chromium storage
+// into a dedicated sessionData folder so updates do not fight over the old cache.
+app.setPath('userData', USER_DATA_DIR);
+app.setPath('sessionData', SESSION_DATA_DIR);
+migrateSessionData(USER_DATA_DIR, SESSION_DATA_DIR);
+
 if (started) app.quit();
+
+function migrateSessionData(userDataDir: string, sessionDataDir: string) {
+  fs.mkdirSync(userDataDir, { recursive: true });
+  fs.mkdirSync(sessionDataDir, { recursive: true });
+  if (fs.existsSync(SESSION_DATA_MIGRATION_MARKER)) return;
+
+  let hadFailure = false;
+
+  for (const entry of SESSION_DATA_MIGRATION_ENTRIES) {
+    const sourcePath = path.join(userDataDir, entry);
+    if (!fs.existsSync(sourcePath)) continue;
+
+    const destinationPath = path.join(sessionDataDir, entry);
+
+    try {
+      fs.cpSync(sourcePath, destinationPath, {
+        recursive: true,
+        force: false,
+        errorOnExist: false,
+      });
+    } catch {
+      hadFailure = true;
+      // Best-effort migration only: Electron will recreate fresh browser data
+      // if a file is locked or the destination already contains newer state.
+    }
+  }
+
+  if (hadFailure) return;
+
+  try {
+    fs.writeFileSync(SESSION_DATA_MIGRATION_MARKER, '');
+  } catch {
+    // Ignore marker failures; the copy above is still best-effort.
+  }
+}
 
 // ── Deep link protocol ────────────────────────────────────────────────────────
 app.setAsDefaultProtocolClient('gochat');

@@ -7,9 +7,13 @@ import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 
+const executableName = 'GoChat';
+const linuxMakerConfig = { bin: executableName };
+
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    executableName,
     icon: process.platform === 'darwin'
       ? './build/icons/mac/icon'
       : process.platform === 'win32'
@@ -22,8 +26,8 @@ const config: ForgeConfig = {
       setupIcon: './build/icons/win/icon.ico',
     }),
     new MakerZIP({}, ['darwin']),
-    new MakerRpm({}),
-    new MakerDeb({}),
+    new MakerRpm(linuxMakerConfig),
+    new MakerDeb(linuxMakerConfig),
   ],
   plugins: [
     new VitePlugin({
