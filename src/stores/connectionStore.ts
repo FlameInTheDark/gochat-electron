@@ -1,9 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { setConnectionConfig } from '@/lib/connectionConfig'
-
-const DEFAULT_API_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost/api/v1'
-const DEFAULT_WS_URL = (import.meta.env.VITE_WEBSOCKET_URL as string | undefined) ?? 'ws://localhost/ws/subscribe'
+import { DEFAULT_API_URL, DEFAULT_WS_URL, setConnectionConfig } from '@/lib/connectionConfig'
 
 interface ConnectionState {
   apiBaseUrl: string

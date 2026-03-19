@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { DEFAULT_API_URL, DEFAULT_WS_URL } from '@/lib/connectionConfig'
 import { useConnectionStore } from '@/stores/connectionStore'
 import { useBackgroundStore } from '@/stores/backgroundStore'
 
@@ -28,10 +29,8 @@ export default function ConnectionConfigModal({ open, onClose }: Props) {
   }
 
   function handleReset() {
-    const defaultApi = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? 'http://localhost/api/v1'
-    const defaultWs = (import.meta.env.VITE_WEBSOCKET_URL as string | undefined) ?? 'ws://localhost/ws/subscribe'
-    setApi(defaultApi)
-    setWs(defaultWs)
+    setApi(DEFAULT_API_URL)
+    setWs(DEFAULT_WS_URL)
   }
 
   // — Appearance tab state —
