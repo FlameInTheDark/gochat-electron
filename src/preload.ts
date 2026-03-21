@@ -41,6 +41,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('update:ready', handler);
   },
   installUpdate: () => ipcRenderer.send('update:install'),
+  checkForUpdate: () => ipcRenderer.send('update:check'),
+  onUpdateStatus: (cb: (status: 'checking' | 'not-available' | 'error') => void) => {
+    const handler = (_: Electron.IpcRendererEvent, status: 'checking' | 'not-available' | 'error') => cb(status);
+    ipcRenderer.on('update:status', handler);
+    return () => ipcRenderer.removeListener('update:status', handler);
+  },
+
+  // App / runtime version info (resolved once at preload time)
+  versionInfo: ipcRenderer.sendSync('app:version-info') as {
+    appVersion: string;
+    electron: string;
+    chrome: string;
+    node: string;
+    platform: string;
+  },
 
   // Secure token storage (OS-encrypted via safeStorage in main process).
   // Synchronous so authStore can read tokens at module-init time.

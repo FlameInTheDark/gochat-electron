@@ -289,11 +289,28 @@ let updaterStartupPhase = true;
 
 function setupAutoUpdater() {
   const feedURL = `https://update.electronjs.org/FlameInTheDark/gochat-electron/${process.platform}/${app.getVersion()}`;
+  const userAgent = `gochat-electron/${app.getVersion()} (${process.platform}: ${process.arch})`;
+
+  // Safety net: show main window after 15 s even if no updater event fires.
+  const splashTimeout = setTimeout(() => {
+    if (updaterStartupPhase) {
+      updaterStartupPhase = false;
+      closeSplashAndShowMain();
+    }
+  }, 15_000);
+
+  function finishStartup() {
+    clearTimeout(splashTimeout);
+    if (updaterStartupPhase) {
+      updaterStartupPhase = false;
+      closeSplashAndShowMain();
+    }
+  }
 
   try {
-    autoUpdater.setFeedURL({ url: feedURL });
+    autoUpdater.setFeedURL({ url: feedURL, headers: { 'User-Agent': userAgent } });
   } catch {
-    closeSplashAndShowMain();
+    finishStartup();
     return;
   }
 
@@ -303,13 +320,15 @@ function setupAutoUpdater() {
 
   autoUpdater.on('update-not-available', () => {
     if (updaterStartupPhase) {
-      updaterStartupPhase = false;
-      closeSplashAndShowMain();
+      finishStartup();
+    } else {
+      mainWindow?.webContents.send('update:status', 'not-available');
     }
   });
 
   autoUpdater.on('update-downloaded', () => {
     if (updaterStartupPhase) {
+      clearTimeout(splashTimeout);
       updaterStartupPhase = false;
       setSplashStatus('Installing update\u2026');
       setTimeout(() => {
@@ -324,12 +343,18 @@ function setupAutoUpdater() {
 
   autoUpdater.on('error', () => {
     if (updaterStartupPhase) {
-      updaterStartupPhase = false;
-      closeSplashAndShowMain();
+      finishStartup();
+    } else {
+      mainWindow?.webContents.send('update:status', 'error');
     }
   });
 
-  autoUpdater.checkForUpdates();
+  try {
+    autoUpdater.checkForUpdates();
+  } catch {
+    finishStartup();
+    return;
+  }
 
   // Re-check every hour during the session.
   setInterval(() => {
@@ -427,6 +452,24 @@ ipcMain.on('shell:open-external', (_e, url: string) => {
 ipcMain.on('update:install', () => {
   app.isQuitting = true;
   autoUpdater.quitAndInstall();
+});
+
+ipcMain.on('update:check', () => {
+  if (!app.isPackaged || process.platform === 'linux') return;
+  mainWindow?.webContents.send('update:status', 'checking');
+  try { autoUpdater.checkForUpdates(); } catch {
+    mainWindow?.webContents.send('update:status', 'error');
+  }
+});
+
+ipcMain.on('app:version-info', (e) => {
+  e.returnValue = {
+    appVersion: app.getVersion(),
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node,
+    platform: process.platform,
+  };
 });
 
 // ── Badge canvas helper ───────────────────────────────────────────────────────

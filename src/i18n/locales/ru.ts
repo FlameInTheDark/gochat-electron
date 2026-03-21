@@ -471,6 +471,38 @@ const ru: Translation = {
         yesterdayAt: 'Вчера в {{time}}',
         done: 'Готово',
     },
+
+    // ── App Settings modal (Electron title-bar ⚙ button) ─────────────────────
+    appSettings: {
+        title: 'Настройки приложения',
+        tabConnection: 'Соединение',
+        tabAppearance: 'Внешний вид',
+        tabInfo: 'О программе',
+        // Connection tab
+        apiBaseUrl: 'Базовый URL API',
+        wsUrl: 'URL WebSocket',
+        connectionReloadHint: 'Приложение перезагрузится после сохранения для применения новых настроек соединения.',
+        resetToDefaults: 'Сбросить',
+        saveAndReload: 'Сохранить и перезагрузить',
+        // Appearance tab
+        chatBackground: 'Фон чата',
+        chatBackgroundDesc: 'Выберите локальное изображение для фона области чата. Оно заполнит всё окно чата без растяжения.',
+        changeImage: 'Изменить изображение',
+        chooseImage: 'Выбрать изображение…',
+        // Info tab
+        appVersion: 'Версия приложения',
+        electronVersion: 'Electron',
+        chromiumVersion: 'Chromium',
+        nodeVersion: 'Node.js',
+        platform: 'Платформа',
+        versionInfoUnavailable: 'Информация о версии недоступна (веб-сборка)',
+        checkForUpdates: 'Проверить обновления',
+        checking: 'Проверка…',
+        upToDate: 'Актуальная версия',
+        checkFailed: 'Ошибка проверки — повторить',
+        updateReady: 'Обновление готово — перезапустите для установки',
+        restartAndInstall: 'Перезапустить и установить',
+    },
 }
 
 export default ru

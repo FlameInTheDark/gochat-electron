@@ -437,4 +437,35 @@ export interface Translation {
         yesterdayAt: string
         done: string
     }
+    // ── App Settings modal (Electron title-bar ⚙ button) ─────────────────────
+    appSettings: {
+        title: string
+        tabConnection: string
+        tabAppearance: string
+        tabInfo: string
+        // Connection tab
+        apiBaseUrl: string
+        wsUrl: string
+        connectionReloadHint: string
+        resetToDefaults: string
+        saveAndReload: string
+        // Appearance tab
+        chatBackground: string
+        chatBackgroundDesc: string
+        changeImage: string
+        chooseImage: string
+        // Info tab
+        appVersion: string
+        electronVersion: string
+        chromiumVersion: string
+        nodeVersion: string
+        platform: string
+        versionInfoUnavailable: string
+        checkForUpdates: string
+        checking: string
+        upToDate: string
+        checkFailed: string
+        updateReady: string
+        restartAndInstall: string
+    }
 }
