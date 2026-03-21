@@ -14,6 +14,7 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     executableName,
+    extraResource: ['assets'],
     icon: process.platform === 'darwin'
       ? './build/icons/mac/icon'
       : process.platform === 'win32'
