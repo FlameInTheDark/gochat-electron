@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.3.1...v1.4.0) (2026-03-21)
+
+
+### Features
+
+* changed default endpoints to dev server ([ca37900](https://github.com/FlameInTheDark/gochat-electron/commit/ca37900b88b86dc9ee7946453e0f0f86fbbb646c))
+
 ## [1.3.1](https://github.com/FlameInTheDark/gochat-electron/compare/v1.3.0...v1.3.1) (2026-03-21)
 
 
