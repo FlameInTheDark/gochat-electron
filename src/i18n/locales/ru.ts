@@ -52,8 +52,8 @@ const ru: Translation = {
         noFriends: 'Пока нет друзей — добавьте через вкладку «Добавить друга».',
         noPending: 'Нет входящих заявок в друзья.',
         addFriendTitle: 'Добавить друга',
-        addFriendDesc: 'Введите имя пользователя и тег (например, {{example}}).',
-        usernamePlaceholder: 'username#1234',
+        addFriendDesc: 'Введите уникальное имя пользователя (@никнейм), которого хотите добавить.',
+        usernamePlaceholder: 'Уникальное имя',
         sendRequest: 'Отправить заявку',
         requestSent: 'Заявка в друзья отправлена!',
         requestFailed: 'Не удалось отправить заявку. Проверьте имя пользователя с тегом.',
@@ -379,6 +379,7 @@ const ru: Translation = {
         save: 'сохранения',
         escTo: ' · Esc для ',
         cancel: 'отмены',
+        edited: '(изменено)',
     },
     joinMessages: [
         'присоединился к вечеринке!',
