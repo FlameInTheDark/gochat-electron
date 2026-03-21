@@ -1,3 +1,10 @@
+## [1.4.3](https://github.com/FlameInTheDark/gochat-electron/compare/v1.4.2...v1.4.3) (2026-03-21)
+
+
+### Bug Fixes
+
+* fixed app update and app info ([ef3b416](https://github.com/FlameInTheDark/gochat-electron/commit/ef3b416236999aad4c9e587c1ac8d1bb2616cf1a))
+
 ## [1.4.2](https://github.com/FlameInTheDark/gochat-electron/compare/v1.4.1...v1.4.2) (2026-03-21)
 
 
