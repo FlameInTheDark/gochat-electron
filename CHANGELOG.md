@@ -1,3 +1,10 @@
+## [1.4.1](https://github.com/FlameInTheDark/gochat-electron/compare/v1.4.0...v1.4.1) (2026-03-21)
+
+
+### Bug Fixes
+
+* fixed channel list reordering ([7e96277](https://github.com/FlameInTheDark/gochat-electron/commit/7e96277afd30ea39475789c5cfb626242d19a86c))
+
 # [1.4.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.3.1...v1.4.0) (2026-03-21)
 
 
