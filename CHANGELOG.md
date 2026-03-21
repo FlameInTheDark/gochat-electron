@@ -1,3 +1,10 @@
+## [1.4.2](https://github.com/FlameInTheDark/gochat-electron/compare/v1.4.1...v1.4.2) (2026-03-21)
+
+
+### Bug Fixes
+
+* fixed assets store for build ([5616c72](https://github.com/FlameInTheDark/gochat-electron/commit/5616c72037367667f9c778008876b63792920f52))
+
 ## [1.4.1](https://github.com/FlameInTheDark/gochat-electron/compare/v1.4.0...v1.4.1) (2026-03-21)
 
 
