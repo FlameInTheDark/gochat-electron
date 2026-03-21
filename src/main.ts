@@ -141,6 +141,53 @@ function saveWindowState(win: BrowserWindow) {
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 
+// ── Splash window ─────────────────────────────────────────────────────────────
+let splashWindow: BrowserWindow | null = null;
+
+function createSplashWindow() {
+  splashWindow = new BrowserWindow({
+    width: 360,
+    height: 180,
+    frame: false,
+    resizable: false,
+    center: true,
+    show: false,
+    backgroundColor: '#1e1f22',
+    skipTaskbar: true,
+    webPreferences: { contextIsolation: true },
+  });
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#1e1f22;color:#fff;font-family:system-ui,sans-serif;
+display:flex;flex-direction:column;align-items:center;justify-content:center;
+height:100vh;gap:14px;-webkit-user-select:none;cursor:default}
+h1{font-size:20px;font-weight:700;letter-spacing:5px;text-transform:uppercase;color:rgba(255,255,255,.85)}
+.ring{width:22px;height:22px;border:2px solid rgba(255,255,255,.12);
+border-top-color:#5865f2;border-radius:50%;animation:s .8s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+p{font-size:11px;color:rgba(255,255,255,.38);letter-spacing:.5px}
+</style></head><body>
+<h1>GoChat</h1><div class="ring"></div>
+<p id="s">Checking for updates\u2026</p>
+</body></html>`;
+
+  splashWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  splashWindow.once('ready-to-show', () => splashWindow?.show());
+}
+
+function setSplashStatus(text: string) {
+  splashWindow?.webContents
+    .executeJavaScript(`document.getElementById('s').textContent=${JSON.stringify(text)}`)
+    .catch(() => {});
+}
+
+function closeSplashAndShowMain() {
+  splashWindow?.close();
+  splashWindow = null;
+  mainWindow?.show();
+}
+
 // ── Tray ──────────────────────────────────────────────────────────────────────
 function createTray() {
   // Replace with a proper 16x16 (Windows) / 22x22 (Linux) icon file.
@@ -215,8 +262,6 @@ const createWindow = () => {
     );
   }
 
-  mainWindow.once('ready-to-show', () => { mainWindow?.show(); });
-
   mainWindow.on('maximize', () => {
     mainWindow?.webContents.send('window:maximized');
   });
@@ -236,20 +281,73 @@ const createWindow = () => {
   mainWindow.on('closed', () => { mainWindow = null; });
 };
 
+// ── Auto-updater ──────────────────────────────────────────────────────────────
+// Runs only in packaged builds on Windows/macOS (Squirrel not available on Linux).
+// Startup phase: splash visible → auto-install any downloaded update silently.
+// Runtime phase: notify renderer (green title-bar button) for user-triggered install.
+let updaterStartupPhase = true;
+
+function setupAutoUpdater() {
+  const feedURL = `https://update.electronjs.org/FlameInTheDark/gochat-electron/${process.platform}/${app.getVersion()}`;
+
+  try {
+    autoUpdater.setFeedURL({ url: feedURL });
+  } catch {
+    closeSplashAndShowMain();
+    return;
+  }
+
+  autoUpdater.on('update-available', () => {
+    if (updaterStartupPhase) setSplashStatus('Downloading update\u2026');
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    if (updaterStartupPhase) {
+      updaterStartupPhase = false;
+      closeSplashAndShowMain();
+    }
+  });
+
+  autoUpdater.on('update-downloaded', () => {
+    if (updaterStartupPhase) {
+      updaterStartupPhase = false;
+      setSplashStatus('Installing update\u2026');
+      setTimeout(() => {
+        app.isQuitting = true;
+        autoUpdater.quitAndInstall();
+      }, 1500);
+    } else {
+      // Mid-session update ready — show green button in title bar.
+      mainWindow?.webContents.send('update:ready');
+    }
+  });
+
+  autoUpdater.on('error', () => {
+    if (updaterStartupPhase) {
+      updaterStartupPhase = false;
+      closeSplashAndShowMain();
+    }
+  });
+
+  autoUpdater.checkForUpdates();
+
+  // Re-check every hour during the session.
+  setInterval(() => {
+    if (!updaterStartupPhase) autoUpdater.checkForUpdates();
+  }, 60 * 60 * 1000);
+}
+
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 app.on('ready', () => {
   createWindow();
   createTray();
 
-  // Auto-updater — only runs in packaged builds.
-  // Reads repository.url from package.json and checks GitHub releases.
-  if (app.isPackaged) {
-    import('update-electron-app').then(({ updateElectronApp }) => {
-      updateElectronApp({ updateInterval: '1 hour' });
-      autoUpdater.on('update-downloaded', () => {
-        mainWindow?.webContents.send('update:ready');
-      });
-    }).catch(() => { /* no-op if package not installed */ });
+  if (app.isPackaged && process.platform !== 'linux') {
+    createSplashWindow();
+    setupAutoUpdater();
+  } else {
+    // Dev / Linux: show main window immediately when rendered.
+    mainWindow?.once('ready-to-show', () => mainWindow?.show());
   }
 });
 

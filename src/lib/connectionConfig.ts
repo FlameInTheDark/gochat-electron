@@ -36,7 +36,7 @@ export const DEFAULT_API_URL =
   (runningFromFileProtocol() ? 'https://gochat.anticode.dev/api/v1' : '/api/v1')
 export const DEFAULT_WS_URL =
   (import.meta.env.VITE_WEBSOCKET_URL as string | undefined) ??
-  (runningFromFileProtocol() ? 'wss://gochat.anticode.dev/ws/subscribe' : '/ws/subscribe')
+  (runningFromFileProtocol() ? 'wss://gochat.anticode.dev/ws' : '/ws')
 
 let _apiBaseUrl = DEFAULT_API_URL
 let _wsUrl = DEFAULT_WS_URL
