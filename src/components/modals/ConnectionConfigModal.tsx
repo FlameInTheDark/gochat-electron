@@ -92,7 +92,7 @@ export default function ConnectionConfigModal({ open, onClose }: Props) {
                   id="api-url"
                   value={api}
                   onChange={(e) => setApi(e.target.value)}
-                  placeholder="http://localhost/api/v1"
+                  placeholder="https://gochat.anticode.dev/api/v1"
                 />
               </div>
               <div className="space-y-2">
@@ -101,7 +101,7 @@ export default function ConnectionConfigModal({ open, onClose }: Props) {
                   id="ws-url"
                   value={ws}
                   onChange={(e) => setWs(e.target.value)}
-                  placeholder="ws://localhost/ws/subscribe"
+                  placeholder="wss://gochat.anticode.dev/ws/subscribe"
                 />
               </div>
               <p className="text-xs text-muted-foreground">

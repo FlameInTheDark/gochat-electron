@@ -13,6 +13,7 @@
   ],
   "patched": [
     "src/App.tsx",
+    "src/lib/connectionConfig.ts",
     "src/pages/LoginPage.tsx",
     "src/pages/app/AppLayout.tsx",
     "src/components/layout/AppShell.tsx"

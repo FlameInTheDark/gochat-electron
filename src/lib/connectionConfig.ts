@@ -33,10 +33,10 @@ function runningFromFileProtocol(): boolean {
 
 export const DEFAULT_API_URL =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
-  (runningFromFileProtocol() ? 'http://localhost/api/v1' : '/api/v1')
+  (runningFromFileProtocol() ? 'https://gochat.anticode.dev/api/v1' : '/api/v1')
 export const DEFAULT_WS_URL =
   (import.meta.env.VITE_WEBSOCKET_URL as string | undefined) ??
-  (runningFromFileProtocol() ? 'ws://localhost/ws/subscribe' : '/ws/subscribe')
+  (runningFromFileProtocol() ? 'wss://gochat.anticode.dev/ws/subscribe' : '/ws/subscribe')
 
 let _apiBaseUrl = DEFAULT_API_URL
 let _wsUrl = DEFAULT_WS_URL
@@ -54,7 +54,7 @@ export function getApiBaseUrl(): string {
 
   const path = normalizeRelativePath(raw)
   if (typeof window === 'undefined') return path
-  if (window.location.protocol === 'file:') return `http://localhost${path}`
+  if (window.location.protocol === 'file:') return `https://gochat.anticode.dev${path}`
   return `${window.location.origin}${path}`
 }
 
@@ -68,7 +68,7 @@ export function getWsUrl(): string {
 
   const path = normalizeRelativePath(raw)
   if (typeof window === 'undefined') return path
-  if (window.location.protocol === 'file:') return `ws://localhost${path}`
+  if (window.location.protocol === 'file:') return `wss://gochat.anticode.dev${path}`
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   return `${protocol}//${window.location.host}${path}`
