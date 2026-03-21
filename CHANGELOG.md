@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.1.3...v1.2.0) (2026-03-20)
+
+
+### Features
+
+* password recovery, webcam fix, emoji picker optimization ([1f43efd](https://github.com/FlameInTheDark/gochat-electron/commit/1f43efd28a323cd58a9927e2f1e6c3f338e18177))
+
 ## [1.1.3](https://github.com/FlameInTheDark/gochat-electron/compare/v1.1.2...v1.1.3) (2026-03-19)
 
 
