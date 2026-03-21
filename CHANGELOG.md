@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.2.0...v1.3.0) (2026-03-21)
+
+
+### Features
+
+* favicon, opengraph, baner ([a44dbb7](https://github.com/FlameInTheDark/gochat-electron/commit/a44dbb747e27d9ac213992ea35c09821b34140b5))
+
 # [1.2.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.1.3...v1.2.0) (2026-03-20)
 
 
