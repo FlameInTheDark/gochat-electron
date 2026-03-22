@@ -1,3 +1,10 @@
+## [1.5.1](https://github.com/FlameInTheDark/gochat-electron/compare/v1.5.0...v1.5.1) (2026-03-22)
+
+
+### Bug Fixes
+
+* sync with web version and fix app update splash screen ([a642208](https://github.com/FlameInTheDark/gochat-electron/commit/a642208c7552f38572dfbe4f4818f9f71bde5e4c))
+
 # [1.5.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.4.3...v1.5.0) (2026-03-22)
 
 
