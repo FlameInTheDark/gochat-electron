@@ -475,18 +475,15 @@ const en: Translation = {
         tabConnection: 'Connection',
         tabAppearance: 'Appearance',
         tabInfo: 'About',
-        // Connection tab
         apiBaseUrl: 'API Base URL',
         wsUrl: 'WebSocket URL',
         connectionReloadHint: 'The app will reload after saving to apply the new connection settings.',
         resetToDefaults: 'Reset to defaults',
         saveAndReload: 'Save & Reload',
-        // Appearance tab
         chatBackground: 'Chat Background',
         chatBackgroundDesc: 'Choose a local image to use as the chat area background. It will cover the full chat window without stretching.',
         changeImage: 'Change Image',
         chooseImage: 'Choose Image…',
-        // Info tab
         appVersion: 'App version',
         electronVersion: 'Electron',
         chromiumVersion: 'Chromium',

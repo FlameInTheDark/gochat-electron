@@ -478,18 +478,15 @@ const ru: Translation = {
         tabConnection: 'Соединение',
         tabAppearance: 'Внешний вид',
         tabInfo: 'О программе',
-        // Connection tab
         apiBaseUrl: 'Базовый URL API',
         wsUrl: 'URL WebSocket',
         connectionReloadHint: 'Приложение перезагрузится после сохранения для применения новых настроек соединения.',
         resetToDefaults: 'Сбросить',
         saveAndReload: 'Сохранить и перезагрузить',
-        // Appearance tab
         chatBackground: 'Фон чата',
         chatBackgroundDesc: 'Выберите локальное изображение для фона области чата. Оно заполнит всё окно чата без растяжения.',
         changeImage: 'Изменить изображение',
         chooseImage: 'Выбрать изображение…',
-        // Info tab
         appVersion: 'Версия приложения',
         electronVersion: 'Electron',
         chromiumVersion: 'Chromium',
