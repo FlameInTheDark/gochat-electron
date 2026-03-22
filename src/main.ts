@@ -147,7 +147,7 @@ let splashWindow: BrowserWindow | null = null;
 function createSplashWindow() {
   splashWindow = new BrowserWindow({
     width: 360,
-    height: 180,
+    height: 200,
     frame: false,
     resizable: false,
     center: true,
@@ -166,9 +166,12 @@ h1{font-size:20px;font-weight:700;letter-spacing:5px;text-transform:uppercase;co
 .ring{width:22px;height:22px;border:2px solid rgba(255,255,255,.12);
 border-top-color:#5865f2;border-radius:50%;animation:s .8s linear infinite}
 @keyframes s{to{transform:rotate(360deg)}}
+#pb-wrap{width:200px;height:3px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden;display:none}
+#pb{height:100%;width:0%;background:#5865f2;border-radius:2px;transition:width .2s ease}
 p{font-size:11px;color:rgba(255,255,255,.38);letter-spacing:.5px}
 </style></head><body>
 <h1>GoChat</h1><div class="ring"></div>
+<div id="pb-wrap"><div id="pb"></div></div>
 <p id="s">Checking for updates\u2026</p>
 </body></html>`;
 
@@ -180,6 +183,13 @@ function setSplashStatus(text: string) {
   splashWindow?.webContents
     .executeJavaScript(`document.getElementById('s').textContent=${JSON.stringify(text)}`)
     .catch(() => {});
+}
+
+function setSplashProgress(percent: number) {
+  splashWindow?.webContents.executeJavaScript(
+    `var w=document.getElementById('pb-wrap');var b=document.getElementById('pb');` +
+    `if(w)w.style.display='block';if(b)b.style.width='${Math.round(percent)}%';`
+  ).catch(() => {});
 }
 
 function closeSplashAndShowMain() {
@@ -318,6 +328,13 @@ function setupAutoUpdater() {
     if (updaterStartupPhase) setSplashStatus('Downloading update\u2026');
   });
 
+  autoUpdater.on('download-progress', (info: { percent: number }) => {
+    if (updaterStartupPhase) {
+      setSplashStatus(`Downloading update\u2026 ${Math.round(info.percent)}%`);
+      setSplashProgress(info.percent);
+    }
+  });
+
   autoUpdater.on('update-not-available', () => {
     if (updaterStartupPhase) {
       finishStartup();
@@ -330,10 +347,11 @@ function setupAutoUpdater() {
     if (updaterStartupPhase) {
       clearTimeout(splashTimeout);
       updaterStartupPhase = false;
+      setSplashProgress(100);
       setSplashStatus('Installing update\u2026');
       setTimeout(() => {
         app.isQuitting = true;
-        autoUpdater.quitAndInstall();
+        autoUpdater.quitAndInstall(true, true);
       }, 1500);
     } else {
       // Mid-session update ready — show green button in title bar.
