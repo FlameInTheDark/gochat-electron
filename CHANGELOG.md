@@ -1,3 +1,10 @@
+## [1.5.2](https://github.com/FlameInTheDark/gochat-electron/compare/v1.5.1...v1.5.2) (2026-03-22)
+
+
+### Bug Fixes
+
+* synced changes from web version ([0c042de](https://github.com/FlameInTheDark/gochat-electron/commit/0c042de794e176ad6ac82bbc2530a7a578bdf71d))
+
 ## [1.5.1](https://github.com/FlameInTheDark/gochat-electron/compare/v1.5.0...v1.5.1) (2026-03-22)
 
 
