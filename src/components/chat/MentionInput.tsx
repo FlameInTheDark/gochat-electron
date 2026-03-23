@@ -1,4 +1,5 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Hash, Shield, Paperclip, SendHorizontal } from 'lucide-react'
@@ -7,7 +8,6 @@ import { ChannelType } from '@/types'
 import type { DtoChannel, DtoGuild, DtoMember, DtoRole } from '@/client'
 import { calculateEffectivePermissions, hasPermission, PermissionBits } from '@/lib/permissions'
 import { useAuthStore } from '@/stores/authStore'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Smile, ImagePlay } from 'lucide-react'
 import EmojiPicker from './EmojiPicker'
 import GifPicker from './GifPicker'
@@ -265,6 +265,18 @@ const MentionInput = forwardRef<MentionInputHandle, Props>(function MentionInput
   const editorRef = useRef<HTMLDivElement>(null)
   const [suggestions, setSuggestions] = useState<SuggestionItem[]>([])
   const [activeIdx, setActiveIdx] = useState(0)
+  const [emojiOpen, setEmojiOpen] = useState(false)
+  const [gifOpen, setGifOpen] = useState(false)
+  const [pickerBottom, setPickerBottom] = useState(64)
+  const [pickerRight, setPickerRight] = useState(0)
+
+  function openPicker(which: 'emoji' | 'gif') {
+    const rect = containerRef.current?.getBoundingClientRect()
+    setPickerBottom(rect ? window.innerHeight - rect.top : 64)
+    setPickerRight(rect ? window.innerWidth - rect.right : 0)
+    setEmojiOpen(which === 'emoji')
+    setGifOpen(which === 'gif')
+  }
   // Tracks drag-enter depth so dragleave on children doesn't hide the highlight
   const dragCounterRef = useRef(0)
   const [isDragging, setIsDragging] = useState(false)
@@ -912,50 +924,60 @@ const MentionInput = forwardRef<MentionInputHandle, Props>(function MentionInput
           />
 
           {/* GIF picker */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                aria-label="Open GIF picker"
-                disabled={disabled}
-                className="mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
+          <button
+            type="button"
+            aria-label="Open GIF picker"
+            disabled={disabled}
+            onClick={() => gifOpen ? setGifOpen(false) : openPicker('gif')}
+            className={cn(
+              'mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors',
+              gifOpen ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <ImagePlay className="h-5 w-5" />
+          </button>
+          {gifOpen && createPortal(
+            <>
+              <div className="fixed inset-0 z-[99]" onClick={() => setGifOpen(false)} />
+              <div
+                className={cn('fixed z-[100] px-2 pb-2', isMobile && 'left-0 right-0')}
+                style={{ bottom: pickerBottom, ...(isMobile ? {} : { right: pickerRight }) }}
               >
-                <ImagePlay className="h-5 w-5" />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
-              side="top"
-              align="end"
-              className="w-auto p-0 border-0 bg-transparent shadow-none"
-            >
-              <GifPicker onSelect={(url) => onSend(url)} />
-            </PopoverContent>
-          </Popover>
+                <GifPicker onSelect={(url) => { onSend(url); setGifOpen(false) }} isMobile={isMobile} />
+              </div>
+            </>,
+            document.body,
+          )}
 
           {/* Emoji picker */}
-          <Popover>
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                aria-label="Open emoji picker"
-                disabled={disabled}
-                className="mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:text-foreground"
+          <button
+            type="button"
+            aria-label="Open emoji picker"
+            disabled={disabled}
+            onClick={() => emojiOpen ? setEmojiOpen(false) : openPicker('emoji')}
+            className={cn(
+              'mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded transition-colors',
+              emojiOpen ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <Smile className="h-5 w-5" />
+          </button>
+          {emojiOpen && createPortal(
+            <>
+              <div className="fixed inset-0 z-[99]" onClick={() => setEmojiOpen(false)} />
+              <div
+                className={cn('fixed z-[100] px-2 pb-2', isMobile && 'left-0 right-0')}
+                style={{ bottom: pickerBottom, ...(isMobile ? {} : { right: pickerRight }) }}
               >
-                <Smile className="h-5 w-5" />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
-              side="top"
-              align={isMobile ? 'center' : 'end'}
-              className={cn('p-0 border-0 bg-transparent shadow-none', isMobile ? 'w-[calc(100vw-1rem)]' : 'w-auto')}
-            >
-              <EmojiPicker
-                onSelect={insertEmojiInEditor}
-                customEmojiGroups={customEmojiGroups}
-                isMobile={isMobile}
-              />
-            </PopoverContent>
-          </Popover>
+                <EmojiPicker
+                  onSelect={(e) => { insertEmojiInEditor(e); if (isMobile) setEmojiOpen(false) }}
+                  customEmojiGroups={customEmojiGroups}
+                  isMobile={isMobile}
+                />
+              </div>
+            </>,
+            document.body,
+          )}
 
           {/* Send button — mobile only */}
           {isMobile && (
