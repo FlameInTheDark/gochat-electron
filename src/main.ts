@@ -167,7 +167,9 @@ h1{font-size:20px;font-weight:700;letter-spacing:5px;text-transform:uppercase;co
 border-top-color:#5865f2;border-radius:50%;animation:s .8s linear infinite}
 @keyframes s{to{transform:rotate(360deg)}}
 #pb-wrap{width:200px;height:3px;background:rgba(255,255,255,.1);border-radius:2px;overflow:hidden;display:none}
-#pb{height:100%;width:0%;background:#5865f2;border-radius:2px;transition:width .2s ease}
+#pb{height:100%;width:0%;background:#5865f2;border-radius:2px;transition:width .3s ease}
+#pb.ind{width:40%;animation:ind 1.4s ease-in-out infinite;transition:none}
+@keyframes ind{0%{margin-left:-40%}100%{margin-left:100%}}
 p{font-size:11px;color:rgba(255,255,255,.38);letter-spacing:.5px}
 </style></head><body>
 <h1>GoChat</h1><div class="ring"></div>
@@ -188,7 +190,14 @@ function setSplashStatus(text: string) {
 function setSplashProgress(percent: number) {
   splashWindow?.webContents.executeJavaScript(
     `var w=document.getElementById('pb-wrap');var b=document.getElementById('pb');` +
-    `if(w)w.style.display='block';if(b)b.style.width='${Math.round(percent)}%';`
+    `if(w)w.style.display='block';if(b){b.classList.remove('ind');b.style.width='${Math.round(percent)}%';}`
+  ).catch(() => {});
+}
+
+function setSplashIndeterminate() {
+  splashWindow?.webContents.executeJavaScript(
+    `var w=document.getElementById('pb-wrap');var b=document.getElementById('pb');` +
+    `if(w)w.style.display='block';if(b){b.style.width='';b.classList.add('ind');}`
   ).catch(() => {});
 }
 
@@ -301,8 +310,9 @@ function setupAutoUpdater() {
   const feedURL = `https://update.electronjs.org/FlameInTheDark/gochat-electron/${process.platform}/${app.getVersion()}`;
   const userAgent = `gochat-electron/${app.getVersion()} (${process.platform}: ${process.arch})`;
 
-  // Safety net: show main window after 15 s even if no updater event fires.
-  const splashTimeout = setTimeout(() => {
+  // Safety net: show main window after 15 s if no updater event fires at all.
+  // Extended to 10 min once a download starts (see update-available handler).
+  let splashTimeout = setTimeout(() => {
     if (updaterStartupPhase) {
       updaterStartupPhase = false;
       closeSplashAndShowMain();
@@ -325,13 +335,29 @@ function setupAutoUpdater() {
   }
 
   autoUpdater.on('update-available', () => {
-    if (updaterStartupPhase) setSplashStatus('Downloading update\u2026');
+    if (updaterStartupPhase) {
+      // Cancel the short safety-net timeout — the download may take much longer.
+      // Set a generous new timeout in case the download hangs completely.
+      clearTimeout(splashTimeout);
+      splashTimeout = setTimeout(() => {
+        if (updaterStartupPhase) {
+          updaterStartupPhase = false;
+          closeSplashAndShowMain();
+        }
+      }, 10 * 60 * 1000);
+      setSplashStatus('Downloading update\u2026');
+      // Native autoUpdater (Squirrel) has no download-progress events,
+      // so show an indeterminate animated bar instead.
+      setSplashIndeterminate();
+    }
   });
 
+  // Note: native autoUpdater (Squirrel) does not emit download-progress.
+  // This handler is kept for compatibility if electron-updater is ever used.
   autoUpdater.on('download-progress', (info: { percent: number }) => {
     if (updaterStartupPhase) {
       setSplashStatus(`Downloading update\u2026 ${Math.round(info.percent)}%`);
-      setSplashProgress(info.percent);
+      setSplashProgress(info.percent); // also removes .ind class
     }
   });
 
