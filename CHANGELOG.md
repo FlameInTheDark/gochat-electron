@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.6.2...v1.7.0) (2026-03-23)
+
+
+### Features
+
+* improved notification parameters ([da307bb](https://github.com/FlameInTheDark/gochat-electron/commit/da307bbdb2d8ec987f125e7b29a70fdd43c60351))
+
 ## [1.6.2](https://github.com/FlameInTheDark/gochat-electron/compare/v1.6.1...v1.6.2) (2026-03-23)
 
 
