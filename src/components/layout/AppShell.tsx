@@ -4,6 +4,7 @@ import ServerSidebar from './ServerSidebar'
 import MobileServerList from './mobile/MobileServerList'
 import { useBackgroundStore } from '@/stores/backgroundStore'
 import { useClientMode } from '@/hooks/useClientMode'
+import { useNotifications } from '@/hooks/useNotifications'
 
 interface Props {
   children: ReactNode
@@ -13,6 +14,7 @@ export default function AppShell({ children }: Props) {
   const backgroundDataUrl = useBackgroundStore((s) => s.backgroundDataUrl)
   const isMobile = useClientMode() === 'mobile'
   const location = useLocation()
+  useNotifications()
 
   // Determine route depth: /app → 1 part, /app/:serverId → 2 parts, etc.
   const parts = location.pathname.split('/').filter(Boolean)

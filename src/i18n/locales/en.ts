@@ -558,6 +558,26 @@ const en: Translation = {
         updateReady: 'Update ready — restart to install',
         restartAndInstall: 'Restart & Install',
     },
+    notifications: {
+        title: 'Notification Settings',
+        allMessages: 'All Messages',
+        onlyMentions: 'Only Mentions',
+        nothing: 'Nothing',
+        suppressEveryone: 'Suppress @everyone',
+        suppressHere: 'Suppress @here',
+        suppressRole: 'Suppress @role mentions',
+        suppressUser: 'Suppress @user mentions',
+        saveFailed: 'Failed to save notification settings',
+        mute: 'Mute Notifications',
+        muteFor15min: 'Mute for 15 minutes',
+        muteFor1hour: 'Mute for 1 hour',
+        muteFor8hours: 'Mute for 8 hours',
+        muteFor24hours: 'Mute for 24 hours',
+        muteIndefinite: 'Mute indefinitely',
+        unmute: 'Unmute',
+        mutedUntil: 'Muted until {{time}}',
+        mutedIndefinite: 'Muted indefinitely',
+    },
 }
 
 export default en

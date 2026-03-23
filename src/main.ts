@@ -16,6 +16,8 @@ const SESSION_DATA_MIGRATION_ENTRIES = [
 
 // Keep app-owned files in the stable userData root and move Chromium storage
 // into a dedicated sessionData folder so updates do not fight over the old cache.
+app.setName('GoChat');
+if (process.platform === 'win32') app.setAppUserModelId('GoChat');
 app.setPath('userData', USER_DATA_DIR);
 app.setPath('sessionData', SESSION_DATA_DIR);
 migrateSessionData(USER_DATA_DIR, SESSION_DATA_DIR);
@@ -261,6 +263,7 @@ const createWindow = () => {
     height: state.height,
     minWidth: 800,
     minHeight: 600,
+    title: 'GoChat',
     frame: false,
     titleBarStyle: 'hidden',
     show: false,

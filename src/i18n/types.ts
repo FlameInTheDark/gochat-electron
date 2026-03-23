@@ -525,4 +525,24 @@ export interface Translation {
         updateReady: string
         restartAndInstall: string
     }
+    notifications: {
+        title: string
+        allMessages: string
+        onlyMentions: string
+        nothing: string
+        suppressEveryone: string
+        suppressHere: string
+        suppressRole: string
+        suppressUser: string
+        saveFailed: string
+        mute: string
+        muteFor15min: string
+        muteFor1hour: string
+        muteFor8hours: string
+        muteFor24hours: string
+        muteIndefinite: string
+        unmute: string
+        mutedUntil: string
+        mutedIndefinite: string
+    }
 }

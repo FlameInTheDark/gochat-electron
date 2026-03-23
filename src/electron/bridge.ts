@@ -25,15 +25,6 @@ export function setupElectronBridge() {
   useMentionStore.subscribe((state) => {
     const count = totalMentions(state.mentions)
     api.setTrayBadge(count)
-
-    // New mention arrived → native notification
-    if (count > prevMentionCount) {
-      api.notify({
-        title: 'GoChat',
-        body: 'You have new mentions',
-      })
-    }
-
     prevMentionCount = count
   })
 
