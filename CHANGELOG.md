@@ -1,3 +1,10 @@
+## [1.6.2](https://github.com/FlameInTheDark/gochat-electron/compare/v1.6.1...v1.6.2) (2026-03-23)
+
+
+### Bug Fixes
+
+* never expiring invites creation fix ([8b48bc7](https://github.com/FlameInTheDark/gochat-electron/commit/8b48bc79810f1a986e62b50a47593cde2d4aa1fc))
+
 ## [1.6.1](https://github.com/FlameInTheDark/gochat-electron/compare/v1.6.0...v1.6.1) (2026-03-23)
 
 
