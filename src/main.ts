@@ -17,7 +17,12 @@ const SESSION_DATA_MIGRATION_ENTRIES = [
 // Keep app-owned files in the stable userData root and move Chromium storage
 // into a dedicated sessionData folder so updates do not fight over the old cache.
 app.setName('GoChat');
-if (process.platform === 'win32') app.setAppUserModelId('GoChat');
+// Windows: set the AppUserModelId so notifications show "GoChat" instead of "Electron".
+// Packaged (Squirrel): use the id Squirrel registers: com.squirrel.{ProductName}.{ProductName}
+// Dev: use the exe path, which Windows automatically accepts as a valid notification sender.
+if (process.platform === 'win32') {
+  app.setAppUserModelId(app.isPackaged ? 'com.squirrel.GoChat.GoChat' : app.getPath('exe'));
+}
 app.setPath('userData', USER_DATA_DIR);
 app.setPath('sessionData', SESSION_DATA_DIR);
 migrateSessionData(USER_DATA_DIR, SESSION_DATA_DIR);
