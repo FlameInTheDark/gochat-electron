@@ -16,6 +16,7 @@
     "src/lib/connectionConfig.ts",
     "src/pages/LoginPage.tsx",
     "src/pages/app/AppLayout.tsx",
-    "src/components/layout/AppShell.tsx"
+    "src/components/layout/AppShell.tsx",
+    "src/services/wsService.ts"
   ]
 }
