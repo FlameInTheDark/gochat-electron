@@ -1,3 +1,10 @@
+# [1.8.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.7.1...v1.8.0) (2026-03-24)
+
+
+### Features
+
+* added message reactions ([e76d2b4](https://github.com/FlameInTheDark/gochat-electron/commit/e76d2b4685c8f9ba787991c471e84331e863d004))
+
 ## [1.7.1](https://github.com/FlameInTheDark/gochat-electron/compare/v1.7.0...v1.7.1) (2026-03-24)
 
 
