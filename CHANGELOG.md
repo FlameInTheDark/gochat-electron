@@ -1,3 +1,10 @@
+## [1.7.1](https://github.com/FlameInTheDark/gochat-electron/compare/v1.7.0...v1.7.1) (2026-03-24)
+
+
+### Bug Fixes
+
+* app name and icon fix ([8374bce](https://github.com/FlameInTheDark/gochat-electron/commit/8374bce4b2f55e46b64e0e308875991746e6504b))
+
 # [1.7.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.6.2...v1.7.0) (2026-03-23)
 
 
