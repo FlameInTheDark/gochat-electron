@@ -1,3 +1,10 @@
+## [1.9.1](https://github.com/FlameInTheDark/gochat-electron/compare/v1.9.0...v1.9.1) (2026-03-25)
+
+
+### Bug Fixes
+
+* reaction pill and emojis size improvement ([bde435b](https://github.com/FlameInTheDark/gochat-electron/commit/bde435bfacd2eba23f9562324cb31c989d6d282b))
+
 # [1.9.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.8.0...v1.9.0) (2026-03-25)
 
 
