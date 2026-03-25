@@ -1,3 +1,10 @@
+# [1.9.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.8.0...v1.9.0) (2026-03-25)
+
+
+### Features
+
+* improved invite page, member panels, translation handling, tooltips ([4a14fed](https://github.com/FlameInTheDark/gochat-electron/commit/4a14feda8d0f610013116bdeee29a72eb0cd264a))
+
 # [1.8.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.7.1...v1.8.0) (2026-03-24)
 
 
