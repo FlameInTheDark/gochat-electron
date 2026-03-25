@@ -1,3 +1,10 @@
+## [1.9.3](https://github.com/FlameInTheDark/gochat-electron/compare/v1.9.2...v1.9.3) (2026-03-25)
+
+
+### Bug Fixes
+
+* voice connection ([ebf4239](https://github.com/FlameInTheDark/gochat-electron/commit/ebf42399edea7d0062408bc48faefde849fd1532))
+
 ## [1.9.2](https://github.com/FlameInTheDark/gochat-electron/compare/v1.9.1...v1.9.2) (2026-03-25)
 
 
