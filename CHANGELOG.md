@@ -1,3 +1,10 @@
+## [1.9.4](https://github.com/FlameInTheDark/gochat-electron/compare/v1.9.3...v1.9.4) (2026-03-26)
+
+
+### Bug Fixes
+
+* UX fixes ([437b2b4](https://github.com/FlameInTheDark/gochat-electron/commit/437b2b483290bed3b42b4268fd4e7d9c15e85ae6))
+
 ## [1.9.3](https://github.com/FlameInTheDark/gochat-electron/compare/v1.9.2...v1.9.3) (2026-03-25)
 
 
