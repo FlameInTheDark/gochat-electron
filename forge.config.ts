@@ -25,6 +25,7 @@ const config: ForgeConfig = {
   makers: [
     new MakerSquirrel({
       setupIcon: './build/icons/win/icon.ico',
+      loadingGif: './assets/installer-loading.gif',
     }),
     new MakerZIP({}, ['darwin']),
     new MakerRpm(linuxMakerConfig),

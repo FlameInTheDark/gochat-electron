@@ -318,14 +318,16 @@ function setupAutoUpdater() {
   const feedURL = `https://update.electronjs.org/FlameInTheDark/gochat-electron/${process.platform}/${app.getVersion()}`;
   const userAgent = `gochat-electron/${app.getVersion()} (${process.platform}: ${process.arch})`;
 
-  // Safety net: show main window after 15 s if no updater event fires at all.
+  // Safety net: show main window if the updater produces no events at all.
+  // 60 s covers slow networks / large initial RELEASES fetch while still
+  // preventing an infinite splash if the updater is completely broken.
   // Extended to 10 min once a download starts (see update-available handler).
   let splashTimeout = setTimeout(() => {
     if (updaterStartupPhase) {
       updaterStartupPhase = false;
       closeSplashAndShowMain();
     }
-  }, 15_000);
+  }, 60_000);
 
   function finishStartup() {
     clearTimeout(splashTimeout);
@@ -342,9 +344,12 @@ function setupAutoUpdater() {
     return;
   }
 
+  let downloadStarted = false;
+
   autoUpdater.on('update-available', () => {
+    downloadStarted = true;
     if (updaterStartupPhase) {
-      // Cancel the short safety-net timeout — the download may take much longer.
+      // Cancel the 60 s safety-net timeout — the download may take much longer.
       // Set a generous new timeout in case the download hangs completely.
       clearTimeout(splashTimeout);
       splashTimeout = setTimeout(() => {
@@ -395,7 +400,14 @@ function setupAutoUpdater() {
 
   autoUpdater.on('error', () => {
     if (updaterStartupPhase) {
-      finishStartup();
+      if (downloadStarted) {
+        // Error occurred mid-download — briefly tell the user before opening.
+        setSplashStatus('Update failed. Starting\u2026');
+        clearTimeout(splashTimeout);
+        setTimeout(finishStartup, 2000);
+      } else {
+        finishStartup();
+      }
     } else {
       mainWindow?.webContents.send('update:status', 'error');
     }
