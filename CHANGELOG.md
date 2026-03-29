@@ -1,3 +1,15 @@
+# [1.10.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.9.5...v1.10.0) (2026-03-29)
+
+
+### Bug Fixes
+
+* build pipeline fix ([87280fc](https://github.com/FlameInTheDark/gochat-electron/commit/87280fc2105af9f90fd1cd25085bd518020a6528))
+
+
+### Features
+
+* SFU v2 protocol with DAVE E2EE and UI improvements ([dd1b3fc](https://github.com/FlameInTheDark/gochat-electron/commit/dd1b3fc206d98985c7587faa9332a503db4dbbe0))
+
 ## [1.9.5](https://github.com/FlameInTheDark/gochat-electron/compare/v1.9.4...v1.9.5) (2026-03-26)
 
 
