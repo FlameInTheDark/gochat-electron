@@ -1,3 +1,10 @@
+## [1.10.1](https://github.com/FlameInTheDark/gochat-electron/compare/v1.10.0...v1.10.1) (2026-03-29)
+
+
+### Bug Fixes
+
+* splash updater ([b1600e4](https://github.com/FlameInTheDark/gochat-electron/commit/b1600e417712610bba6770ff5798ef50b28eec62))
+
 # [1.10.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.9.5...v1.10.0) (2026-03-29)
 
 
