@@ -212,6 +212,9 @@ function closeSplashAndShowMain() {
   splashWindow?.close();
   splashWindow = null;
   mainWindow?.show();
+  // Maximize only after show() — calling maximize() on a hidden window on
+  // Windows implicitly reveals it, which would race with the splash screen.
+  if (loadWindowState().maximized) mainWindow?.maximize();
 }
 
 // ── Tray ──────────────────────────────────────────────────────────────────────
@@ -281,8 +284,6 @@ const createWindow = () => {
       sandbox: false,
     },
   });
-
-  if (state.maximized) mainWindow.maximize();
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
@@ -439,7 +440,10 @@ app.on('ready', () => {
     setupAutoUpdater();
   } else {
     // Dev / Linux: show main window immediately when rendered.
-    mainWindow?.once('ready-to-show', () => mainWindow?.show());
+    mainWindow?.once('ready-to-show', () => {
+      mainWindow?.show();
+      if (loadWindowState().maximized) mainWindow?.maximize();
+    });
   }
 });
 
