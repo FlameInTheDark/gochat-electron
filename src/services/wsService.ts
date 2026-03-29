@@ -58,6 +58,8 @@ const activePresenceSubs = new Set<string>()
 let currentOwnStatus: UserStatus = 'online'
 // Custom status text included in every op:3 presence broadcast
 let currentCustomStatusText = ''
+// Current voice channel ID — included in every op:3 presence broadcast
+let currentVoiceChannelId: string | null = null
 
 // Last event sequence ID received — echoed back in heartbeats (op:2, d.e)
 let lastEventId = 0
@@ -262,13 +264,14 @@ function resubscribe() {
   }
   syncChannelSubscriptions()
 
-  // Re-send own presence status (with custom text if set)
+  // Re-send own presence status (with custom text and voice channel if set)
   sendJson({
     op: 3,
     d: {
       status: currentOwnStatus,
       platform: 'web',
       ...(currentCustomStatusText ? { custom_status_text: currentCustomStatusText } : {}),
+      ...(currentVoiceChannelId ? { voice_channel_id: BigInt(currentVoiceChannelId) } : {}),
     },
   })
 
@@ -439,6 +442,10 @@ function handleMessage(event: MessageEvent) {
       // Always sync custom_status_text — empty string clears a previously set status
       store.setCustomStatus(uid, presence.custom_status_text ?? '')
 
+      // Sync mute/deafen state for users in voice channels.
+      // Only act when voice_channel_id is explicitly present in the payload —
+      // an absent field means the server didn't send voice state in this update,
+      // so we must not touch voice channel membership.
       if (presence.voice_channel_id !== undefined) {
         const voiceChannelIdNum = Number(presence.voice_channel_id)
         if (voiceChannelIdNum !== 0) {
@@ -1168,6 +1175,7 @@ export function sendPresenceStatus(status: UserStatus, customStatusText?: string
         status,
         platform: 'web',
         ...(currentCustomStatusText ? { custom_status_text: currentCustomStatusText } : {}),
+        ...(currentVoiceChannelId ? { voice_channel_id: BigInt(currentVoiceChannelId) } : {}),
       },
     })
   }
@@ -1220,4 +1228,10 @@ export function disconnect() {
     heartbeatWorker.postMessage({ type: 'dispose' })
     heartbeatWorker = null
   }
+}
+
+// Update the tracked voice channel for presence broadcasts.
+// Call with null when leaving voice — the next sendPresenceStatus will omit voice_channel_id.
+export function setPresenceVoiceChannel(channelId: string | null) {
+  currentVoiceChannelId = channelId
 }

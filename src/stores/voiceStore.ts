@@ -14,6 +14,9 @@ interface VoiceState {
   channelId: string | null
   guildId: string | null
   channelName: string | null
+  guildName: string | null
+  sfuUrl: string | null
+  voiceRegion: string | null
   localMuted: boolean
   localDeafened: boolean
   localSpeaking: boolean // true when VAD/PTT is actively transmitting
@@ -21,6 +24,11 @@ interface VoiceState {
   localVideoStream: MediaStream | null
   ping: number // RTT in ms
   connectionState: VoiceConnectionState
+  daveEnabled: boolean         // server reported dave_enabled=true in Ready
+  daveProtocolVersion: 0 | 1  // 0 = transport-only, 1 = E2EE active
+  daveTransitioning: boolean   // true while a DAVE epoch/downgrade transition is in progress
+  daveEpoch: number            // current DAVE epoch (0 = not started)
+  davePrivacyCode: string | null // voice privacy code from davey (null when not E2EE)
   settings: {
     audioInputDevice: string
     audioOutputDevice: string
@@ -37,7 +45,7 @@ interface VoiceState {
   }
   peers: Record<string, VoicePeer> // keyed by userId string
 
-  setVoiceChannel: (guildId: string, channelId: string, channelName: string) => void
+  setVoiceChannel: (guildId: string, channelId: string, channelName: string, guildName?: string, sfuUrl?: string, voiceRegion?: string) => void
   setSettings: (settings: Partial<VoiceState['settings']>) => void
   addPeer: (userId: string) => void
   removePeer: (userId: string) => void
@@ -53,6 +61,9 @@ interface VoiceState {
   setPeerVideoStream: (userId: string, stream: MediaStream | null) => void
   setPing: (ping: number) => void
   setConnectionState: (state: VoiceConnectionState) => void
+  setDaveEnabled: (enabled: boolean) => void
+  setDaveState: (version: 0 | 1, transitioning: boolean, epoch?: number) => void
+  setDavePrivacyCode: (code: string | null) => void
   reset: () => void
 }
 
@@ -60,6 +71,9 @@ export const useVoiceStore = create<VoiceState>((set) => ({
   channelId: null,
   guildId: null,
   channelName: null,
+  guildName: null,
+  sfuUrl: null,
+  voiceRegion: null,
   localMuted: false,
   localDeafened: false,
   localSpeaking: false,
@@ -67,6 +81,11 @@ export const useVoiceStore = create<VoiceState>((set) => ({
   localVideoStream: null,
   ping: 0,
   connectionState: 'disconnected',
+  daveEnabled: false,
+  daveProtocolVersion: 0,
+  daveTransitioning: false,
+  daveEpoch: 0,
+  davePrivacyCode: null,
   settings: {
     audioInputDevice: '',
     audioOutputDevice: '',
@@ -83,8 +102,8 @@ export const useVoiceStore = create<VoiceState>((set) => ({
   },
   peers: {},
 
-  setVoiceChannel: (guildId, channelId, channelName) =>
-    set({ guildId, channelId, channelName }),
+  setVoiceChannel: (guildId, channelId, channelName, guildName, sfuUrl, voiceRegion) =>
+    set({ guildId, channelId, channelName, guildName: guildName ?? null, sfuUrl: sfuUrl ?? null, voiceRegion: voiceRegion ?? null }),
 
   setSettings: (settings) =>
     set((state) => ({ settings: { ...state.settings, ...settings } })),
@@ -160,17 +179,32 @@ export const useVoiceStore = create<VoiceState>((set) => ({
 
   setConnectionState: (connectionState) => set({ connectionState }),
 
+  setDaveEnabled: (daveEnabled) => set({ daveEnabled }),
+
+  setDaveState: (daveProtocolVersion, daveTransitioning, daveEpoch) =>
+    set((s) => ({ daveProtocolVersion, daveTransitioning, daveEpoch: daveEpoch ?? s.daveEpoch })),
+
+  setDavePrivacyCode: (davePrivacyCode) => set({ davePrivacyCode }),
+
   reset: () =>
     set({
       channelId: null,
       guildId: null,
       channelName: null,
+      guildName: null,
+      sfuUrl: null,
+      voiceRegion: null,
       localMuted: false,
       localDeafened: false,
       localCameraEnabled: false,
       localVideoStream: null,
       ping: 0,
       connectionState: 'disconnected',
+      daveEnabled: false,
+      daveProtocolVersion: 0,
+      daveTransitioning: false,
+      daveEpoch: 0,
+      davePrivacyCode: null,
       peers: {},
     }),
 }))
