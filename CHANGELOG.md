@@ -1,3 +1,10 @@
+# [1.11.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.10.1...v1.11.0) (2026-03-30)
+
+
+### Features
+
+* totp and password change ([b3618e1](https://github.com/FlameInTheDark/gochat-electron/commit/b3618e153289d761fd9473811d430450aaa31aec))
+
 ## [1.10.1](https://github.com/FlameInTheDark/gochat-electron/compare/v1.10.0...v1.10.1) (2026-03-29)
 
 
