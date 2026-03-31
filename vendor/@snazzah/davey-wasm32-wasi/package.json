@@ -1,0 +1,45 @@
+{
+  "name": "@snazzah/davey-wasm32-wasi",
+  "version": "0.1.10",
+  "cpu": [
+    "wasm32"
+  ],
+  "main": "davey.wasi.cjs",
+  "files": [
+    "davey.wasm32-wasi.wasm",
+    "davey.wasi.cjs",
+    "davey.wasi-browser.js",
+    "wasi-worker.mjs",
+    "wasi-worker-browser.mjs"
+  ],
+  "description": "DAVE protocol implementation",
+  "keywords": [
+    "discord",
+    "e2ee",
+    "mls",
+    "napi-rs",
+    "NAPI",
+    "N-API",
+    "Rust",
+    "node-addon",
+    "node-addon-api"
+  ],
+  "author": {
+    "name": "Snazzah",
+    "email": "me@snazzah.com",
+    "url": "https://snazzah.com/"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "repository": "https://github.com/Snazzah/davey",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "browser": "davey.wasi-browser.js",
+  "dependencies": {
+    "@napi-rs/wasm-runtime": "^1.1.1"
+  }
+}

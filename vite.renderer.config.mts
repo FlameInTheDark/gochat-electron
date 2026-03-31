@@ -7,24 +7,29 @@ import { fileURLToPath, URL } from 'node:url';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import type { Plugin } from 'vite';
 
-// Copied from gochat-react vite.config.ts:
-// @snazzah/davey-wasm32-wasi has "cpu":["wasm32"] so npm on some platforms may skip
-// installing it. This plugin resolves it to its browser entry when installed,
-// and falls back to a minimal stub so the build succeeds either way.
+// Copied from gochat-react vite.config.ts, with an Electron-specific vendor fallback.
+// @snazzah/davey-wasm32-wasi has "cpu":["wasm32"] so npm on Windows/x64 skips
+// installing it. This plugin resolves it from node_modules when present, falls
+// back to a vendored copy committed with the Electron app, and only then uses a
+// minimal stub so the build still succeeds.
 function daveyResolvePlugin(): Plugin {
-  const pkgDir = path.resolve(__dirname, './node_modules/@snazzah/davey-wasm32-wasi')
-  const browserEntry = path.join(pkgDir, 'davey.wasi-browser.js')
-  const installed = fs.existsSync(browserEntry)
+  const pkgDirs = [
+    path.resolve(__dirname, './node_modules/@snazzah/davey-wasm32-wasi'),
+    path.resolve(__dirname, './vendor/@snazzah/davey-wasm32-wasi'),
+  ]
+  const pkgDir = pkgDirs.find((dir) => fs.existsSync(path.join(dir, 'davey.wasi-browser.js')))
+  const browserEntry = pkgDir ? path.join(pkgDir, 'davey.wasi-browser.js') : null
+  const installed = !!browserEntry
 
   return {
     name: 'vite-plugin-davey-resolve',
     enforce: 'pre',
     resolveId(id) {
       if (id === '@snazzah/davey-wasm32-wasi') {
-        return installed ? browserEntry : '\0davey-wasm32-wasi-stub'
+        return browserEntry ?? '\0davey-wasm32-wasi-stub'
       }
       // Sub-path imports from within davey.wasi-browser.js (e.g. worker URL)
-      if (installed && id.startsWith('@snazzah/davey-wasm32-wasi/')) {
+      if (installed && pkgDir && id.startsWith('@snazzah/davey-wasm32-wasi/')) {
         return path.join(pkgDir, id.slice('@snazzah/davey-wasm32-wasi/'.length))
       }
       return undefined

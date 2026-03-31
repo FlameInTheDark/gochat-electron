@@ -579,6 +579,9 @@ export interface Translation {
         emojiTitle: string; emojiDesc: string; uploadEmoji: string; emojiLimits: string
         emojiNameLabel: string; emojiNamePlaceholder: string; emojiNameHint: string; emojiFileLabel: string
         uploading: string; upload: string; emojiUploaded: string; emojiUploadFailed: string; emojiNameSaved: string; emojiNameSaveFailed: string; emojiDeleted: string; emojiDeleteFailed: string
+        emojiSelectFile: string; emojiStaticSection: string; emojiAnimatedSection: string
+        emojiNoStatic: string; emojiNoAnimated: string; emojiUploadHintStatic: string; emojiUploadHintAnimated: string
+        emojiRename: string; emojiDeleteBtn: string; emojiFileTooLarge: string
         deleteServer: string; deleteServerDesc: string; deleteServerConfirm: string; deleteServerFailed: string; deleteServerNameMismatch: string
         permCategoryGeneral: string; permCategoryMembership: string; permCategoryText: string; permCategoryVoice: string
         permAdministrator: string; permAdministratorDesc: string
@@ -608,6 +611,9 @@ export interface Translation {
         permMuteMembers: string; permMuteMembersDesc: string
         permDeafenMembers: string; permDeafenMembersDesc: string
         permMoveMembers: string; permMoveMembersDesc: string
+        permCategoryExpressions: string
+        permCreateExpressions: string; permCreateExpressionsDesc: string
+        permManageExpressions: string; permManageExpressionsDesc: string
     }
     // ── App Settings modal (Electron title-bar ⚙ button) ─────────────────────
     appSettings: {
@@ -669,5 +675,17 @@ export interface Translation {
         goToApp: string
         invalidInvite: string
         joinFailed: string
+        inviteEmbedHeader: string
+        join: string
+        joined: string
+        invalidHeader: string
+        invalidTitle: string
+        invalidAskForNew: string
+        mention: string
+    }
+    notFound: {
+        title: string
+        subtitle: string
+        back: string
     }
 }
