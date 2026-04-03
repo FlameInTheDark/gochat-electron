@@ -1,7 +1,6 @@
-import { ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer } from 'electron';
 
-// contextIsolation is disabled so we assign directly to window instead of contextBridge.
-(window as any).electronAPI = {
+contextBridge.exposeInMainWorld('electronAPI', {
   // Window controls
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),
@@ -65,4 +64,4 @@ import { ipcRenderer } from 'electron';
     set: (key: string, value: string): void => { ipcRenderer.sendSync('secure-store:set', key, value); },
     delete: (key: string): void => { ipcRenderer.sendSync('secure-store:delete', key); },
   },
-};
+});
