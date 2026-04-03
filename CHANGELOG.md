@@ -1,3 +1,10 @@
+# [1.12.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.11.1...v1.12.0) (2026-04-03)
+
+
+### Features
+
+* new DAVE implementation ([86d594f](https://github.com/FlameInTheDark/gochat-electron/commit/86d594f139b80c7c5fcadfdfc9117b2d22249ac7))
+
 ## [1.11.1](https://github.com/FlameInTheDark/gochat-electron/compare/v1.11.0...v1.11.1) (2026-03-31)
 
 
