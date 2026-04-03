@@ -1,3 +1,10 @@
+## [1.12.1](https://github.com/FlameInTheDark/gochat-electron/compare/v1.12.0...v1.12.1) (2026-04-03)
+
+
+### Bug Fixes
+
+* UX, threads and roles ([c623d24](https://github.com/FlameInTheDark/gochat-electron/commit/c623d245bf2eec736c654aa54c4fec2f4fe3f688))
+
 # [1.12.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.11.1...v1.12.0) (2026-04-03)
 
 
