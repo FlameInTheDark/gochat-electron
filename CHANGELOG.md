@@ -1,3 +1,10 @@
+# [1.13.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.12.1...v1.13.0) (2026-04-04)
+
+
+### Features
+
+* DTLS status and logout clean data fix ([452d4e2](https://github.com/FlameInTheDark/gochat-electron/commit/452d4e29474bbe4dd5669a7aa78056cb6a1993b6))
+
 ## [1.12.1](https://github.com/FlameInTheDark/gochat-electron/compare/v1.12.0...v1.12.1) (2026-04-03)
 
 
