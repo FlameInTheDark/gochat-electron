@@ -1,3 +1,10 @@
+# [1.14.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.13.0...v1.14.0) (2026-04-05)
+
+
+### Features
+
+* system notifications channel configuration and UX improvements ([0c0a027](https://github.com/FlameInTheDark/gochat-electron/commit/0c0a027d7e929bec7b5692bae7a91b1789119f39))
+
 # [1.13.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.12.1...v1.13.0) (2026-04-04)
 
 
