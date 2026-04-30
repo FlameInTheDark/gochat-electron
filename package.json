@@ -52,7 +52,7 @@
     "@typescript-eslint/eslint-plugin": "^5.62.0",
     "@typescript-eslint/parser": "^5.62.0",
     "@vitejs/plugin-react": "^5.1.1",
-    "electron": "41.0.2",
+    "electron": "41.1.0",
     "eslint": "^8.57.1",
     "eslint-plugin-import": "^2.32.0",
     "remotion": "^4.0.0",
