@@ -1,3 +1,10 @@
+# [1.15.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.14.0...v1.15.0) (2026-04-30)
+
+
+### Features
+
+* application streaming ([4d072a1](https://github.com/FlameInTheDark/gochat-electron/commit/4d072a19547c6c81a201fd75aa896275a484833f))
+
 # [1.14.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.13.0...v1.14.0) (2026-04-05)
 
 
