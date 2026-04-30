@@ -7,7 +7,10 @@
   "private": true,
   "scripts": {
     "start": "electron-forge start",
+    "build-native": "node scripts/build-native.mjs",
+    "prepackage": "node scripts/build-native.mjs",
     "package": "electron-forge package",
+    "premake": "node scripts/build-native.mjs",
     "make": "electron-forge make",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx .",

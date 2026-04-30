@@ -15,6 +15,11 @@ const config: ForgeConfig = {
     asar: true,
     executableName,
     extraResource: ['assets'],
+    extendInfo: {
+      NSAudioCaptureUsageDescription: 'GoChat captures system audio when you share audio in a stream.',
+      NSCameraUsageDescription: 'GoChat uses the camera for video calls and streams.',
+      NSMicrophoneUsageDescription: 'GoChat uses the microphone for voice chat and calls.',
+    },
     icon: process.platform === 'darwin'
       ? './build/icons/mac/icon'
       : process.platform === 'win32'

@@ -1,6 +1,7 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, shell, Notification, safeStorage, autoUpdater } from 'electron';
+import { app, BrowserWindow, desktopCapturer, ipcMain, Tray, Menu, nativeImage, shell, Notification, safeStorage, autoUpdater } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import started from 'electron-squirrel-startup';
 
 const USER_DATA_DIR = path.join(app.getPath('appData'), 'gochat-electron');
@@ -147,6 +148,15 @@ function saveWindowState(win: BrowserWindow) {
 // ── Globals ───────────────────────────────────────────────────────────────────
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
+type DesktopCaptureSelection = {
+  sourceId: string;
+  sourceType: 'screen' | 'application';
+  audioMode: 'desktop' | 'application' | 'none';
+};
+
+let selectedDesktopCapture: DesktopCaptureSelection | null = null;
+let nextAppAudioCaptureId = 1;
+const appAudioCaptures = new Map<string, ChildProcessWithoutNullStreams>();
 
 // ── Splash window ─────────────────────────────────────────────────────────────
 let splashWindow: BrowserWindow | null = null;
@@ -281,6 +291,42 @@ const createWindow = () => {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
     },
+  });
+
+  mainWindow.webContents.session.setDisplayMediaRequestHandler(async (_request, callback) => {
+    const selection = selectedDesktopCapture;
+    if (!selection) {
+      callback({});
+      return;
+    }
+
+    try {
+      const sources = await desktopCapturer.getSources({
+        types: ['screen', 'window'],
+        thumbnailSize: { width: 320, height: 180 },
+        fetchWindowIcons: true,
+      });
+      const source = sources.find((item) => item.id === selection.sourceId);
+      if (!source) {
+        callback({});
+        return;
+      }
+
+      const useScreenLoopback = selection.sourceType === 'screen'
+        && selection.audioMode === 'desktop';
+      const useApplicationSystemAudioFallback = process.platform !== 'win32'
+        && selection.sourceType === 'application'
+        && selection.audioMode === 'application';
+
+      callback({
+        video: source,
+        audio: useScreenLoopback || useApplicationSystemAudioFallback
+          ? 'loopback'
+          : undefined,
+      });
+    } catch {
+      callback({});
+    }
   });
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
@@ -539,6 +585,106 @@ ipcMain.on('app:version-info', (e) => {
     node: process.versions.node,
     platform: process.platform,
   };
+});
+
+ipcMain.handle('desktop-capture:get-sources', async (_event, sourceType: 'screen' | 'application') => {
+  const sources = await desktopCapturer.getSources({
+    types: sourceType === 'screen' ? ['screen'] : ['window'],
+    thumbnailSize: { width: 320, height: 180 },
+    fetchWindowIcons: true,
+  });
+
+  return sources.flatMap((source) => {
+    try {
+      return [{
+        id: source.id,
+        name: source.name,
+        displayId: source.display_id,
+        thumbnail: source.thumbnail?.isEmpty() ? '' : source.thumbnail.toDataURL(),
+        appIcon: source.appIcon && !source.appIcon.isEmpty() ? source.appIcon.toDataURL() : null,
+      }];
+    } catch {
+      return [];
+    }
+  });
+});
+
+ipcMain.handle(
+  'desktop-capture:set-source',
+  (_event, selection: DesktopCaptureSelection | null) => {
+    selectedDesktopCapture = selection;
+  },
+);
+
+function getAppLoopbackHelperPath(): string {
+  const basePath = app.isPackaged ? process.resourcesPath : app.getAppPath();
+  return path.join(basePath, 'assets', 'bin', 'win32-x64', 'GochatAppLoopback.exe');
+}
+
+function stopAppAudioCapture(id: string) {
+  const child = appAudioCaptures.get(id);
+  if (!child) return;
+
+  appAudioCaptures.delete(id);
+  try {
+    child.stdin.end();
+  } catch {
+    // noop
+  }
+  setTimeout(() => {
+    if (!child.killed) {
+      child.kill();
+    }
+  }, 750);
+}
+
+ipcMain.handle('app-loopback-audio:start', async (event, sourceId: string) => {
+  if (process.platform !== 'win32') {
+    throw new Error('Application audio capture is only available on Windows.');
+  }
+  if (!sourceId.startsWith('window:')) {
+    throw new Error('Application audio capture requires a window source.');
+  }
+
+  const helperPath = getAppLoopbackHelperPath();
+  if (!fs.existsSync(helperPath)) {
+    throw new Error('Application audio helper is missing.');
+  }
+
+  const id = String(nextAppAudioCaptureId++);
+  const child = spawn(helperPath, ['--source-id', sourceId], {
+    windowsHide: true,
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+  appAudioCaptures.set(id, child);
+
+  child.stdout.on('data', (chunk: Buffer) => {
+    const capture = appAudioCaptures.get(id);
+    if (!capture || event.sender.isDestroyed()) return;
+    event.sender.send('app-loopback-audio:data', id, chunk);
+  });
+
+  child.stderr.on('data', (chunk: Buffer) => {
+    const message = chunk.toString('utf8').trim();
+    if (message) {
+      console.warn(`[app-loopback-audio:${id}] ${message}`);
+    }
+  });
+
+  child.on('exit', (code, signal) => {
+    appAudioCaptures.delete(id);
+    if (!event.sender.isDestroyed()) {
+      event.sender.send('app-loopback-audio:stopped', id, code, signal);
+    }
+  });
+
+  event.sender.once('destroyed', () => stopAppAudioCapture(id));
+
+  return { id, sampleRate: 44100, channels: 2 };
+});
+
+ipcMain.handle('app-loopback-audio:stop', (_event, id: string) => {
+  stopAppAudioCapture(id);
 });
 
 // ── Badge canvas helper ───────────────────────────────────────────────────────

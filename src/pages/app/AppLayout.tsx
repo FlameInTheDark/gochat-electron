@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
+import { performLogout } from '@/lib/logoutCleanup'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useIdlePresence } from '@/hooks/useIdlePresence'
 import { useDeepLink } from '@/hooks/useDeepLink'
@@ -25,6 +26,7 @@ import i18n from '@/i18n'
 import { setupTokenRefreshScheduler } from '@/lib/tokenRefresh'
 import { getApiBaseUrl } from '@/lib/connectionConfig'
 import { compareSnowflakes } from '@/lib/snowflake'
+import { voiceSettingsFromDevices } from '@/lib/voiceSettings'
 
 const VALID_STATUSES = new Set<string>(['online', 'idle', 'dnd', 'offline'])
 
@@ -68,7 +70,7 @@ function AuthenticatedApp() {
 // ── Loading screen ─────────────────────────────────────────────────────────
 function LoadingScreen() {
   return (
-    <div className="flex h-screen w-screen items-center justify-center bg-background">
+    <div className="flex h-full w-full items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-4 text-muted-foreground">
         <div className="w-10 h-10 rounded-full border-2 border-primary border-t-transparent animate-spin" />
         <p className="text-sm">{i18n.t('app.loading')}</p>
@@ -91,7 +93,6 @@ export default function AppLayout() {
   const navigate = useNavigate()
   const token = useAuthStore((s) => s.token)
   const setUser = useAuthStore((s) => s.setUser)
-  const logout = useAuthStore((s) => s.logout)
 
   // Proactive token refresh: decodes the JWT expiry and schedules a refresh
   // 30 s before it expires so the WS and API never hit a stale token.
@@ -235,17 +236,9 @@ export default function AppLayout() {
           void i18n.changeLanguage(savedLanguage)
         }
         // Restore voice settings
-        if (settingsRes?.data?.settings?.devices) {
-          const d = settingsRes.data.settings.devices
-          useVoiceStore.getState().setSettings({
-            audioInputDevice: d.audio_input_device ?? '',
-            audioOutputDevice: d.audio_output_device ?? '',
-            audioInputLevel: d.audio_input_level || 100,
-            audioOutputLevel: d.audio_output_level || 100,
-            autoGainControl: d.auto_gain_control ?? true,
-            echoCancellation: d.echo_cancellation ?? true,
-            noiseSuppression: d.noise_suppression ?? true,
-          })
+        const voiceSettings = voiceSettingsFromDevices(settingsRes?.data?.settings?.devices)
+        if (voiceSettings) {
+          useVoiceStore.getState().setSettings(voiceSettings)
         }
       })
       .catch(() => {
@@ -254,7 +247,7 @@ export default function AppLayout() {
         // Refresh also failed (or no refresh token) — clear everything and
         // send the user back to the login screen.
         validatedTokenRef.current = null
-        logout()
+        performLogout()
         navigate('/', { replace: true })
       })
       .finally(() => {
@@ -267,7 +260,7 @@ export default function AppLayout() {
     return () => {
       controller.abort()
     }
-    // token is the only real dependency; navigate/setUser/logout are stable refs
+    // token is the only real dependency; navigate/setUser/performLogout are stable refs
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
 

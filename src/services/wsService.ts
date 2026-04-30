@@ -1,11 +1,12 @@
 import JSONBig from 'json-bigint'
 import { useMessageStore } from '@/stores/messageStore'
-import { usePresenceStore, type UserStatus } from '@/stores/presenceStore'
+import { usePresenceStore, type ActiveStreamPresence, type UserStatus } from '@/stores/presenceStore'
 import { useUnreadStore } from '@/stores/unreadStore'
 import { useTypingStore } from '@/stores/typingStore'
 import { useMentionStore } from '@/stores/mentionStore'
 import { useReadStateStore } from '@/stores/readStateStore'
 import { useVoiceStore } from '@/stores/voiceStore'
+import { useStreamStore } from '@/stores/streamStore'
 import { useAuthStore } from '@/stores/authStore'
 import { performLogout } from '@/lib/logoutCleanup'
 import { useEmojiStore } from '@/stores/emojiStore'
@@ -41,6 +42,8 @@ let socket: WebSocket | null = null
 // Falls back to plain setInterval if workers are unavailable (e.g. strict CSP).
 let heartbeatWorker: Worker | null = null
 let heartbeatTimer: ReturnType<typeof setInterval> | null = null  // fallback only
+let heartbeatIntervalMs = 0
+let lastHeartbeatAt = 0
 
 // Reconnect state
 let currentToken: string | null = null
@@ -61,6 +64,8 @@ let currentOwnStatus: UserStatus = 'online'
 let currentCustomStatusText = ''
 // Current voice channel ID — included in every op:3 presence broadcast
 let currentVoiceChannelId: string | null = null
+// Current local camera state — included in every op:3 presence broadcast
+let currentSelfVideo = false
 
 // Last event sequence ID received — echoed back in heartbeats (op:2, d.e)
 let lastEventId = 0
@@ -108,6 +113,30 @@ function sendHeartbeat() {
   }
 }
 
+function dispatchHeartbeat() {
+  if (heartbeatIntervalMs <= 0) {
+    sendHeartbeat()
+    return
+  }
+
+  const now = Date.now()
+  // When both the worker and the fallback timer are running, coalesce them
+  // into a single outbound heartbeat for the current interval window.
+  if (lastHeartbeatAt !== 0 && now - lastHeartbeatAt < Math.max(1_000, heartbeatIntervalMs / 2)) {
+    return
+  }
+
+  lastHeartbeatAt = now
+  sendHeartbeat()
+}
+
+function ensureHeartbeatFallback() {
+  if (heartbeatIntervalMs <= 0 || heartbeatTimer !== null) {
+    return
+  }
+  heartbeatTimer = setInterval(dispatchHeartbeat, heartbeatIntervalMs)
+}
+
 function getOrCreateHeartbeatWorker(): Worker | null {
   if (heartbeatWorker) return heartbeatWorker
   try {
@@ -115,10 +144,12 @@ function getOrCreateHeartbeatWorker(): Worker | null {
       new URL('./heartbeatWorker', import.meta.url),
       { type: 'module' },
     )
-    heartbeatWorker.onmessage = () => sendHeartbeat()
+    heartbeatWorker.onmessage = () => dispatchHeartbeat()
     heartbeatWorker.onerror = () => {
-      // Worker failed (e.g. strict CSP) — null out so fallback is used
+      // Worker failed (e.g. strict CSP or bundler/runtime issue) — keep the
+      // connection alive with the main-thread timer instead of dropping heartbeats.
       heartbeatWorker = null
+      ensureHeartbeatFallback()
     }
     return heartbeatWorker
   } catch {
@@ -127,6 +158,8 @@ function getOrCreateHeartbeatWorker(): Worker | null {
 }
 
 function clearHeartbeat() {
+  heartbeatIntervalMs = 0
+  lastHeartbeatAt = 0
   if (heartbeatWorker) {
     heartbeatWorker.postMessage({ type: 'stop' })
   }
@@ -138,13 +171,15 @@ function clearHeartbeat() {
 
 function startHeartbeat(intervalMs: number) {
   clearHeartbeat()
+  heartbeatIntervalMs = intervalMs
   const worker = getOrCreateHeartbeatWorker()
   if (worker) {
     worker.postMessage({ type: 'start', intervalMs })
-  } else {
-    // Fallback: plain setInterval (may be throttled in background tabs)
-    heartbeatTimer = setInterval(sendHeartbeat, intervalMs)
   }
+  // Always keep a normal timer as a safety net. The worker still helps in
+  // background tabs, but the fallback prevents silent heartbeat loss if the
+  // worker fails after startup.
+  ensureHeartbeatFallback()
 }
 
 function clearReconnectTimer() {
@@ -273,6 +308,7 @@ function resubscribe() {
       platform: 'web',
       ...(currentCustomStatusText ? { custom_status_text: currentCustomStatusText } : {}),
       ...(currentVoiceChannelId ? { voice_channel_id: BigInt(currentVoiceChannelId) } : {}),
+      self_video: currentSelfVideo,
     },
   })
 
@@ -375,9 +411,17 @@ interface WsPresenceEvent {
   voice_channel_id?: string | number
   mute?: boolean
   deafen?: boolean
+  self_video?: boolean
   username?: string
   avatar_url?: string
   client_status?: Record<string, string>
+  active_stream?: {
+    id?: string | number
+    channel_id?: string | number
+    source_type?: ActiveStreamPresence['sourceType']
+    audio_mode?: ActiveStreamPresence['audioMode']
+    started_at?: number
+  } | null
 }
 
 function extractMessage(d: unknown): DtoMessage | null {
@@ -395,6 +439,19 @@ const VALID_STATUSES = new Set<UserStatus>(['online', 'idle', 'dnd', 'offline'])
 function normalizeStatus(s: string | undefined): UserStatus {
   if (s && VALID_STATUSES.has(s as UserStatus)) return s as UserStatus
   return 'offline'
+}
+
+function normalizeActiveStream(
+  raw: WsPresenceEvent['active_stream'],
+): ActiveStreamPresence | null {
+  if (!raw?.id || !raw.channel_id) return null
+  return {
+    id: String(raw.id),
+    channelId: String(raw.channel_id),
+    sourceType: raw.source_type ?? 'screen',
+    audioMode: raw.audio_mode ?? 'none',
+    startedAt: Number(raw.started_at ?? 0),
+  }
 }
 
 function isThreadChannel(channel: DtoChannel | null | undefined): channel is DtoChannel {
@@ -442,6 +499,7 @@ function handleMessage(event: MessageEvent) {
       store.setPresence(uid, normalizeStatus(presence.status))
       // Always sync custom_status_text — empty string clears a previously set status
       store.setCustomStatus(uid, presence.custom_status_text ?? '')
+      store.setActiveStream(uid, normalizeActiveStream(presence.active_stream))
 
       // Sync mute/deafen state for users in voice channels.
       // Only act when voice_channel_id is explicitly present in the payload —
@@ -454,6 +512,7 @@ function handleMessage(event: MessageEvent) {
           const presenceStore = usePresenceStore.getState()
           const currentUserId = useAuthStore.getState().user?.id
           const channelId = String(presence.voice_channel_id)
+          const selfVideo = presence.self_video ?? false
 
           // Track user in voice channel for sidebar display (including current user)
           // Add/update user in voice channel with mute/deafen state
@@ -463,13 +522,24 @@ function handleMessage(event: MessageEvent) {
             avatarUrl: presence.avatar_url,
             muted: presence.mute ?? false,
             deafened: presence.deafen ?? false,
+            selfVideo,
           })
 
           // Sync mute/deafen state for other users (not ourselves)
           if (uid !== String(currentUserId ?? '')) {
             voiceStore.setPeerMuted(uid, presence.mute ?? false)
             voiceStore.setPeerDeafened(uid, presence.deafen ?? false)
+            if (!selfVideo) {
+              voiceStore.setPeerVideoStream(uid, null)
+            }
           }
+          window.dispatchEvent(new CustomEvent('ws:presence_self_video', {
+            detail: {
+              user_id: uid,
+              voice_channel_id: channelId,
+              self_video: selfVideo,
+            },
+          }))
         } else {
           // voice_channel_id explicitly 0 → user left voice channel
           const presenceStore = usePresenceStore.getState()
@@ -905,6 +975,67 @@ function handleMessage(event: MessageEvent) {
       return
     }
 
+    // t=210: Guild Member Start Stream
+    if (t === 210) {
+      const eventData = d as {
+        guild_id?: string | number
+        channel_id?: string | number
+        user_id?: string | number
+        stream?: {
+          id?: string | number
+          channel_id?: string | number
+          source_type?: 'screen' | 'application'
+          audio_mode?: 'desktop' | 'application' | 'none'
+          started_at?: number
+        }
+      } | undefined
+      if (eventData?.stream?.id != null && eventData.user_id != null && eventData.channel_id != null) {
+        useStreamStore.getState().upsertChannelStream({
+          id: String(eventData.stream.id),
+          ownerUserId: String(eventData.user_id),
+          channelId: String(eventData.channel_id),
+          sourceType: eventData.stream.source_type ?? 'screen',
+          audioMode: eventData.stream.audio_mode ?? 'none',
+          startedAt: Number(eventData.stream.started_at ?? 0),
+        })
+        usePresenceStore.getState().setActiveStream(String(eventData.user_id), {
+          id: String(eventData.stream.id),
+          channelId: String(eventData.channel_id),
+          sourceType: eventData.stream.source_type ?? 'screen',
+          audioMode: eventData.stream.audio_mode ?? 'none',
+          startedAt: Number(eventData.stream.started_at ?? 0),
+        })
+      }
+      window.dispatchEvent(new CustomEvent('ws:member_start_stream', { detail: d }))
+      return
+    }
+
+    // t=211: Guild Member Stop Stream
+    if (t === 211) {
+      const eventData = d as {
+        channel_id?: string | number
+        user_id?: string | number
+        stream_id?: string | number
+      } | undefined
+      if (eventData?.channel_id != null && eventData?.stream_id != null) {
+        useStreamStore.getState().removeChannelStream(
+          String(eventData.channel_id),
+          String(eventData.stream_id),
+        )
+      }
+      if (eventData?.user_id != null) {
+        usePresenceStore.getState().setActiveStream(String(eventData.user_id), null)
+      }
+      window.dispatchEvent(new CustomEvent('ws:member_stop_stream', { detail: d }))
+      return
+    }
+
+    // t=212: Guild Streams Rebind
+    if (t === 212) {
+      window.dispatchEvent(new CustomEvent('ws:member_stream_rebind', { detail: d }))
+      return
+    }
+
     // ── Friend / DM events ───────────────────────────────────────────────────
 
     // t=402: Incoming friend request
@@ -1177,9 +1308,21 @@ export function sendPresenceStatus(status: UserStatus, customStatusText?: string
         platform: 'web',
         ...(currentCustomStatusText ? { custom_status_text: currentCustomStatusText } : {}),
         ...(currentVoiceChannelId ? { voice_channel_id: BigInt(currentVoiceChannelId) } : {}),
+        self_video: currentSelfVideo,
       },
     })
   }
+}
+
+// Update the tracked voice channel for presence broadcasts.
+// Call with null when leaving voice — the next sendPresenceStatus will omit voice_channel_id.
+export function setPresenceVoiceChannel(channelId: string | null) {
+  currentVoiceChannelId = channelId
+}
+
+// Update the tracked local camera state for presence broadcasts.
+export function setPresenceSelfVideo(enabled: boolean) {
+  currentSelfVideo = enabled
 }
 
 // Send a raw message with BigInt-aware serialization (used by voice service for SFU signalling).
@@ -1231,8 +1374,3 @@ export function disconnect() {
   }
 }
 
-// Update the tracked voice channel for presence broadcasts.
-// Call with null when leaving voice — the next sendPresenceStatus will omit voice_channel_id.
-export function setPresenceVoiceChannel(channelId: string | null) {
-  currentVoiceChannelId = channelId
-}

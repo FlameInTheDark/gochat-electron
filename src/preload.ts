@@ -34,6 +34,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Open URLs in system browser
   openExternal: (url: string) => ipcRenderer.send('shell:open-external', url),
 
+  // Desktop capture source selection
+  getDesktopCaptureSources: (sourceType: 'screen' | 'application') =>
+    ipcRenderer.invoke('desktop-capture:get-sources', sourceType),
+  setDesktopCaptureSource: (selection: { sourceId: string; sourceType: 'screen' | 'application'; audioMode: 'desktop' | 'application' | 'none' } | null) =>
+    ipcRenderer.invoke('desktop-capture:set-source', selection),
+  startApplicationAudioCapture: (sourceId: string) =>
+    ipcRenderer.invoke('app-loopback-audio:start', sourceId),
+  stopApplicationAudioCapture: (captureId: string) =>
+    ipcRenderer.invoke('app-loopback-audio:stop', captureId),
+  onApplicationAudioData: (cb: (captureId: string, chunk: Uint8Array) => void) => {
+    const handler = (_: Electron.IpcRendererEvent, captureId: string, chunk: Uint8Array) => cb(captureId, chunk);
+    ipcRenderer.on('app-loopback-audio:data', handler);
+    return () => ipcRenderer.removeListener('app-loopback-audio:data', handler);
+  },
+  onApplicationAudioStopped: (cb: (captureId: string) => void) => {
+    const handler = (_: Electron.IpcRendererEvent, captureId: string) => cb(captureId);
+    ipcRenderer.on('app-loopback-audio:stopped', handler);
+    return () => ipcRenderer.removeListener('app-loopback-audio:stopped', handler);
+  },
+
   // Auto-updater
   onUpdateReady: (cb: () => void) => {
     const handler = () => cb();

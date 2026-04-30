@@ -17,6 +17,7 @@ import ServerLayout from '@/pages/app/ServerLayout'
 import ChannelPage from '@/pages/app/ChannelPage'
 import MePage from '@/pages/app/MePage'
 import DMPage from '@/pages/app/DMPage'
+import NotFoundPage from '@/pages/NotFoundPage'
 import CreateServerModal from '@/components/modals/CreateServerModal'
 import CreateChannelModal from '@/components/modals/CreateChannelModal'
 import CreateCategoryModal from '@/components/modals/CreateCategoryModal'
@@ -36,7 +37,7 @@ const router = createHashRouter([
   { path: '/confirm/:userId/:token', element: <ConfirmPage /> },
   { path: '/invite/:code', element: <InvitePage /> },
   { path: '/forgot-password', element: <ForgotPasswordPage /> },
-  { path: '/reset/:token', element: <ResetPasswordPage /> },
+  { path: '/reset/:userId/:token', element: <ResetPasswordPage /> },
   {
     path: '/app',
     element: <AppLayout />,
@@ -59,13 +60,14 @@ const router = createHashRouter([
       },
     ],
   },
+  { path: '*', element: <NotFoundPage /> },
 ])
 
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <div className="flex flex-col h-screen w-screen overflow-hidden">
+        <div className="flex flex-col h-dvh w-screen overflow-hidden">
           <TitleBar />
           <div className="flex flex-1 min-h-0 overflow-hidden">
             <RouterProvider router={router} />

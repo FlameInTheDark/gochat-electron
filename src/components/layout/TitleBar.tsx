@@ -2,38 +2,6 @@ import { useEffect, useState } from 'react'
 import { Minus, Square, X, Maximize2, Settings, Download } from 'lucide-react'
 import ConnectionConfigModal from '@/components/modals/ConnectionConfigModal'
 
-declare global {
-  interface Window {
-    electronAPI?: {
-      minimize: () => void
-      maximize: () => void
-      close: () => void
-      isMaximized: () => Promise<boolean>
-      onMaximizeChange: (cb: (maximized: boolean) => void) => () => void
-      notify: (opts: { title: string; body: string }) => void
-      setTrayBadge: (count: number) => void
-      onDeepLink: (cb: (url: string) => void) => () => void
-      openExternal: (url: string) => void
-      onUpdateReady: (cb: () => void) => () => void
-      installUpdate: () => void
-      checkForUpdate: () => void
-      onUpdateStatus: (cb: (status: 'checking' | 'not-available' | 'error') => void) => () => void
-      versionInfo?: {
-        appVersion: string
-        electron: string
-        chrome: string
-        node: string
-        platform: string
-      }
-      secureStore: {
-        get: (key: string) => string | null
-        set: (key: string, value: string) => void
-        delete: (key: string) => void
-      }
-    }
-  }
-}
-
 export default function TitleBar() {
   const [isMaximized, setIsMaximized] = useState(false)
   const [configOpen, setConfigOpen] = useState(false)

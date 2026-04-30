@@ -96,3 +96,12 @@ CLAUDE.md
 
 research/
 research/gochat-react
+
+# Generated native helper outputs
+assets/bin/
+native/app-loopback-capture/packages/
+native/app-loopback-capture/x64/
+native/app-loopback-capture/Debug/
+native/app-loopback-capture/Release/
+native/app-loopback-capture/*.user
+native/app-loopback-capture/*.suo
