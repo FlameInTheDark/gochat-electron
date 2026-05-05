@@ -1,3 +1,10 @@
+# [1.16.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.15.0...v1.16.0) (2026-05-05)
+
+
+### Features
+
+* guild discovery page ([ddaf27b](https://github.com/FlameInTheDark/gochat-electron/commit/ddaf27b197da8a6ab0e027ef3b3aa53d9626f1a7))
+
 # [1.15.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.14.0...v1.15.0) (2026-04-30)
 
 
