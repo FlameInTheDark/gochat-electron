@@ -17,6 +17,11 @@
     "src/pages/LoginPage.tsx",
     "src/pages/app/AppLayout.tsx",
     "src/components/layout/AppShell.tsx",
-    "src/services/wsService.ts"
+    "src/services/wsService.ts",
+    "src/components/voice/StartStreamDialog.tsx",
+    "src/components/voice/VoicePanel.tsx",
+    "src/pages/app/ChannelPage.tsx",
+    "src/services/streamService.ts",
+    "src/types/electron.d.ts"
   ]
 }
