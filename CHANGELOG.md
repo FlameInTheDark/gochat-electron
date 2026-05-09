@@ -1,3 +1,10 @@
+# [1.17.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.16.0...v1.17.0) (2026-05-09)
+
+
+### Features
+
+* UI/UX improvements and fixes ([2cf604d](https://github.com/FlameInTheDark/gochat-electron/commit/2cf604dadb9aa9f559e1cbcbe9cf619505df713a))
+
 # [1.16.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.15.0...v1.16.0) (2026-05-05)
 
 
