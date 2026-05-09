@@ -23,7 +23,11 @@ import NotFoundPage from '@/pages/NotFoundPage'
 import CreateServerModal from '@/components/modals/CreateServerModal'
 import CreateChannelModal from '@/components/modals/CreateChannelModal'
 import CreateCategoryModal from '@/components/modals/CreateCategoryModal'
+import AuthProblemModal from '@/components/modals/AuthProblemModal'
+import { performLogout } from '@/lib/logoutCleanup'
 
+
+const isElectron = typeof window !== 'undefined' && !!window.electronAPI
 
 // On desktop, /app redirects to /app/@me. On mobile, /app shows the server list.
 function AppIndexRedirect() {
@@ -73,11 +77,16 @@ const router = createHashRouter([
 ])
 
 export default function App() {
+  function handleAuthProblemLogout() {
+    performLogout()
+    void router.navigate('/')
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <div className="flex flex-col h-dvh w-screen overflow-hidden">
-          <TitleBar />
+          {isElectron && <TitleBar />}
           <div className="flex flex-1 min-h-0 overflow-hidden">
             <RouterProvider router={router} />
           </div>
@@ -86,6 +95,7 @@ export default function App() {
         <CreateServerModal />
         <CreateChannelModal />
         <CreateCategoryModal />
+        <AuthProblemModal onLogout={handleAuthProblemLogout} />
         <Toaster richColors position="bottom-right" />
       </TooltipProvider>
     </QueryClientProvider>
