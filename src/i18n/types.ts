@@ -130,6 +130,9 @@ export interface Translation {
         previewAttachments: string
         openThread: string
         createThread: string
+        searchPlaceholder: string
+        joinedThreads: string
+        otherActiveThreads: string
         threadFallback: string
         missingThread: string
         createTitle: string
@@ -144,6 +147,8 @@ export interface Translation {
         backToList: string
         editThread: string
         deleteThread: string
+        archiveThread: string
+        copyThreadId: string
         editTitle: string
         editDescription: string
         topic: string
@@ -660,6 +665,7 @@ export interface Translation {
         loading: string
         error: string
         unknown: string
+        more: string
         todayAt: string
         yesterdayAt: string
         done: string
@@ -677,13 +683,17 @@ export interface Translation {
         systemChannelLabel: string; systemChannelDesc: string; systemChannelNone: string
         iconUploaded: string; iconFailed: string; iconFileFailed: string
         membersTitle: string; filterOf: string; filterPlaceholder: string; joined: string; kickMember: string; banMember: string
+        kickConfirmDescription: string; banConfirmDescription: string
         kickSuccess: string; kickFailed: string; banSuccess: string; banFailed: string; noMembersMatch: string; noMembers: string
         bansTitle: string; noBans: string; banReason: string; unbanning: string; unban: string; unbanSuccess: string; unbanFailed: string
         rolesTitle: string; createRole: string; roleNamePlaceholder: string; everyoneRole: string; everyoneBadge: string
         backToRoles: string; editRole: string; everyoneDesc: string; roleEditDesc: string; deleteRole: string
         colorLabel: string; roleColorTitle: string; roleNameLabel: string
+        roleTabDisplay: string; roleTabPermissions: string; roleTabMembers: string
+        rolePreview: string; roleHoistLabel: string; roleHoistDesc: string
         adminWarningTitle: string; adminWarningDesc: string
         noCustomRoles: string; selectRoleHint: string; roleIdLabel: string
+        searchMembers: string; removeRoleMember: string; noRoleMembers: string
         roleSaved: string; roleFailed: string; roleCreated: string; roleCreateFailed: string; roleDeleted: string; roleDeleteFailed: string; roleReorderFailed: string
         invitesTitle: string; inviteOneHour: string; inviteOneDay: string; inviteSevenDays: string; inviteThirtyDays: string; inviteNeverExpires: string
         inviteCreatedAt: string; inviteExpired: string; inviteExpires: string; inviteNever: string
