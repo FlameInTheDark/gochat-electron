@@ -1,3 +1,10 @@
+# [1.19.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.18.0...v1.19.0) (2026-05-14)
+
+
+### Features
+
+* dm calls feature ([b699027](https://github.com/FlameInTheDark/gochat-electron/commit/b6990270b61b3af76bda9a43742ae756273a2cf5))
+
 # [1.18.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.17.0...v1.18.0) (2026-05-13)
 
 
