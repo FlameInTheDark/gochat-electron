@@ -1,3 +1,10 @@
+## [1.19.1](https://github.com/FlameInTheDark/gochat-electron/compare/v1.19.0...v1.19.1) (2026-05-14)
+
+
+### Bug Fixes
+
+* dm call reconnect fixes ([2451f37](https://github.com/FlameInTheDark/gochat-electron/commit/2451f372078819820f34da31be862a3bc42e4fdb))
+
 # [1.19.0](https://github.com/FlameInTheDark/gochat-electron/compare/v1.18.0...v1.19.0) (2026-05-14)
 
 
