@@ -10,7 +10,9 @@ import type {
 } from '@/lib/messageJump'
 import { retryPendingChannelMessage } from '@/lib/pendingMessageSend'
 import { useMessageStore } from '@/stores/messageStore'
+import { useInteractionStore } from '@/stores/interactionStore'
 import MessageItem, { type MessageItemProps } from '@/components/chat/MessageItem'
+import ApplicationCommandUsageRow from '@/components/chat/message-list/ApplicationCommandUsageRow'
 import { GroupedMessageSkeletonRow, MessageSkeletonRow } from './SkeletonRows'
 
 const GAP_RUNWAY_MIN_CARD_COUNT = 6
@@ -80,7 +82,10 @@ function GapRunwayRow({
   // Auto-trigger loading when gap enters the overscan window with idle status.
   // loadGap has its own gapFetchesRef guard to prevent concurrent fetches.
   const onActivateRef = useRef(onActivate)
-  onActivateRef.current = onActivate
+  useEffect(() => {
+    onActivateRef.current = onActivate
+  }, [onActivate])
+
   useEffect(() => {
     if (row.status === 'idle') {
       onActivateRef.current?.()
@@ -168,6 +173,7 @@ export default function MessageListRow({
 }: Props) {
   const { t } = useTranslation()
   const removePendingMessage = useMessageStore((s) => s.removePendingMessage)
+  const removePendingInteraction = useInteractionStore((s) => s.removePendingInteraction)
 
   switch (row.kind) {
     case 'conversation-start':
@@ -234,6 +240,17 @@ export default function MessageListRow({
               }
             />
           </div>
+        </div>
+      )
+
+    case 'application-command':
+      return (
+        <div data-row-key={row.key} style={{ paddingTop: chatSpacing }}>
+          <ApplicationCommandUsageRow
+            interaction={row.interaction}
+            resolver={resolver}
+            onDismiss={() => removePendingInteraction(row.interaction.localId)}
+          />
         </div>
       )
   }

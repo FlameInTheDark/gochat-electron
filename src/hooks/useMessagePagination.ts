@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import axios from 'axios'
 import { messageApi } from '@/api/client'
 import { useMessageStore, type PendingMessage } from '@/stores/messageStore'
+import { useInteractionStore, type PendingInteraction } from '@/stores/interactionStore'
 import { useReadStateStore } from '@/stores/readStateStore'
 import type { DtoMessage } from '@/types'
 import {
@@ -20,6 +21,7 @@ const JUMP_WINDOW_SIZE = 100
 const SMALL_FETCH_PAGE_SIZE = 20
 const EMPTY_MESSAGES: DtoMessage[] = []
 const EMPTY_PENDING_MESSAGES: PendingMessage[] = []
+const EMPTY_PENDING_INTERACTIONS: PendingInteraction[] = []
 const EMPTY_MESSAGE_ROW_KEYS: Record<string, string> = {}
 const ESTIMATED_ROW_PX = 44
 const MIN_GAP_HEIGHT = 96
@@ -392,7 +394,7 @@ function buildSingleIslandState(
 
     segments.push(buildLoadedSegment(normalizedMessages, 'loaded:island'))
 
-    if (shouldShowNewerGap(normalizedMessages, {
+    if (options.mode !== 'live-tail' && shouldShowNewerGap(normalizedMessages, {
       fallbackHasMore: options.newerHasMoreFallback,
       latestPosition: options.latestPosition,
       knownLatestId: options.knownLatestId,
@@ -656,6 +658,7 @@ function buildTimelineRows(
   state: TimelineState | null,
   messages: DtoMessage[],
   pendingMessages: PendingMessage[],
+  pendingInteractions: PendingInteraction[],
   messageRowKeys: Record<string, string>,
 ): MessageTimelineRow[] {
   if (!state) return []
@@ -676,6 +679,7 @@ function buildTimelineRows(
   let previousRenderableMessage:
     | { message: DtoMessage; createdAt?: number; dayLabel: string }
     | null = null
+  let previousDayLabel: string | null = null
   const firstSegment = state.segments.find((segment) => segment.type === 'loaded')
   const showConversationStart = state.segments.length === 0 ||
     (state.segments[0]?.type !== 'gap' && firstSegment != null)
@@ -704,6 +708,7 @@ function buildTimelineRows(
         heightPx: segment.heightPx,
       })
       previousRenderableMessage = null
+      previousDayLabel = null
       return
     }
 
@@ -721,7 +726,7 @@ function buildTimelineRows(
 
       const dayLabel = getMessageDayLabel(rowMessage)
       const localPreviousMessage = previousRenderableMessage
-      const shouldShowDivider = !localPreviousMessage || dayLabel !== localPreviousMessage.dayLabel
+      const shouldShowDivider = previousDayLabel == null || dayLabel !== previousDayLabel
 
       if (shouldShowDivider) {
         rows.push({
@@ -730,6 +735,7 @@ function buildTimelineRows(
           label: dayLabel,
         })
       }
+      previousDayLabel = dayLabel
 
       if (
         localPreviousMessage?.message.id != null &&
@@ -759,8 +765,45 @@ function buildTimelineRows(
     })
   })
 
-  pendingMessages.forEach((pendingMessage) => {
-    if (renderedPendingLocalIds.has(pendingMessage.localId)) return
+  const pendingItems = [
+    ...pendingMessages
+      .filter((pendingMessage) => !renderedPendingLocalIds.has(pendingMessage.localId))
+      .map((pendingMessage) => ({
+        kind: 'message' as const,
+        createdAt: pendingMessage.createdAt,
+        pendingMessage,
+      })),
+    ...pendingInteractions.map((interaction) => ({
+      kind: 'application-command' as const,
+      createdAt: interaction.createdAt,
+      interaction,
+    })),
+  ].sort((left, right) => left.createdAt - right.createdAt)
+
+  pendingItems.forEach((item) => {
+    if (item.kind === 'application-command') {
+      const dayLabel = getDayLabelForDate(new Date(item.interaction.createdAt))
+      const shouldShowDivider = previousDayLabel == null || dayLabel !== previousDayLabel
+
+      if (shouldShowDivider) {
+        rows.push({
+          kind: 'date-divider',
+          key: `date:appcmd:${item.interaction.localId}`,
+          label: dayLabel,
+        })
+      }
+      previousDayLabel = dayLabel
+
+      rows.push({
+        kind: 'application-command',
+        key: `appcmd:${item.interaction.localId}`,
+        interaction: item.interaction,
+      })
+      previousRenderableMessage = null
+      return
+    }
+
+    const pendingMessage = item.pendingMessage
 
     const isConfirmed = pendingMessage.status === 'confirmed' && pendingMessage.message.id != null
     const deliveryState: 'sending' | 'failed' | undefined = isConfirmed
@@ -771,7 +814,7 @@ function buildTimelineRows(
     const optimisticCreatedAt = isConfirmed ? undefined : pendingMessage.createdAt
     const dayLabel = getMessageDayLabel(pendingMessage.message, optimisticCreatedAt)
     const localPreviousMessage = previousRenderableMessage
-    const shouldShowDivider = !localPreviousMessage || dayLabel !== localPreviousMessage.dayLabel
+    const shouldShowDivider = previousDayLabel == null || dayLabel !== previousDayLabel
 
     if (shouldShowDivider) {
       rows.push({
@@ -780,6 +823,7 @@ function buildTimelineRows(
         label: dayLabel,
       })
     }
+    previousDayLabel = dayLabel
 
     rows.push({
       kind: 'message',
@@ -839,6 +883,65 @@ function replaceSegmentAt<T>(items: T[], index: number, nextItem: T): T[] {
   const nextItems = [...items]
   nextItems[index] = nextItem
   return nextItems
+}
+
+function stateContainsLoadedMessage(state: TimelineState, messageId: string): boolean {
+  return state.segments.some((segment) =>
+    segment.type === 'loaded' && segment.messageIds.includes(messageId),
+  )
+}
+
+function pruneMissingLoadedMessages(
+  state: TimelineState,
+  messageMap: Map<string, DtoMessage>,
+  options: {
+    dropNewerEdgeGaps: boolean
+    nextChannelMaxPosition?: number
+  },
+): TimelineState {
+  let changed = false
+  const materializedMessages = collectMaterializedMessages(state.segments, messageMap)
+  if (materializedMessages.length === 0) {
+    return state.segments.length === 0 && state.channelMaxPosition === undefined
+      ? state
+      : {
+          ...state,
+          mode: 'live-tail',
+          segments: [],
+          channelMaxPosition: undefined,
+        }
+  }
+
+  const nextSegments = state.segments.flatMap((segment): TimelineSegment[] => {
+    if (segment.type === 'loaded') {
+      const messageIds = segment.messageIds.filter((id) => messageMap.has(id))
+      if (messageIds.length !== segment.messageIds.length) {
+        changed = true
+      }
+      return messageIds.length > 0 ? [{ ...segment, messageIds }] : []
+    }
+    if (options.dropNewerEdgeGaps && segment.direction === 'newer' && segment.gapKind === 'newer-edge') {
+      changed = true
+      return []
+    }
+    return [segment]
+  })
+
+  if (state.channelMaxPosition !== options.nextChannelMaxPosition) {
+    changed = true
+  }
+
+  return changed
+    ? {
+        ...state,
+        channelMaxPosition: options.nextChannelMaxPosition,
+        segments: nextSegments,
+      }
+    : state
+}
+
+function takeNewestMessages(messages: DtoMessage[], limit: number): DtoMessage[] {
+  return normalizeMessages(messages).slice(-limit)
 }
 
 function determineJumpDirection(
@@ -1042,10 +1145,14 @@ function applyGapBatchToState(
     previousLoadedIndex,
     buildLoadedSegment(previousMessages, 'loaded:newer-fill'),
   )
+  const nextChannelMaxPosition = reachedLatest && options.exhaustedByCount
+    ? newestPosition
+    : currentState.channelMaxPosition
 
   if (nextLoadedIndex < 0) {
     return {
       ...currentState,
+      channelMaxPosition: nextChannelMaxPosition,
       segments: reachedLatest
         ? nextSegments.filter((segment) => segment.key !== gap.key)
         : replaceSegmentAt(nextSegments, gapIndex, buildNewerEdgeGap(previousMessages, options.latestPosition)),
@@ -1073,6 +1180,7 @@ export function useMessagePagination(
   const [timelineState, setTimelineState] = useState<TimelineState | null>(null)
   const [timelineChannelId, setTimelineChannelId] = useState<string | null>(channelId ?? null)
   const [focusTargetRowKey, setFocusTargetRowKey] = useState<string | null>(null)
+  const [exhaustedLatestMessageId, setExhaustedLatestMessageId] = useState<string | undefined>()
 
   const applyTimelineSnapshot = useCallback((
     cid: string,
@@ -1091,6 +1199,9 @@ export function useMessagePagination(
   const pendingMessages = useMessageStore((s) =>
     channelId ? (s.pendingMessages[channelId] ?? EMPTY_PENDING_MESSAGES) : EMPTY_PENDING_MESSAGES,
   )
+  const pendingInteractions = useInteractionStore((s) =>
+    channelId ? (s.pendingInteractions[channelId] ?? EMPTY_PENDING_INTERACTIONS) : EMPTY_PENDING_INTERACTIONS,
+  )
   const messageRowKeys = useMessageStore((s) =>
     channelId ? (s.messageRowKeys[channelId] ?? EMPTY_MESSAGE_ROW_KEYS) : EMPTY_MESSAGE_ROW_KEYS,
   )
@@ -1103,13 +1214,17 @@ export function useMessagePagination(
     channelId ? s.lastMessages[channelId] : undefined,
   )
 
-  const knownLatestMessageId = maxSnowflake(channelLastMessageId, cachedLastMessageId)
+  const rawKnownLatestMessageId = maxSnowflake(channelLastMessageId, cachedLastMessageId)
+  const knownLatestMessageId = maxSnowflake(
+    channelLastMessageId !== exhaustedLatestMessageId ? channelLastMessageId : undefined,
+    cachedLastMessageId !== exhaustedLatestMessageId ? cachedLastMessageId : undefined,
+  )
 
   const activeTimelineState = timelineChannelId === channelId ? timelineState : null
   const activeFocusTargetRowKey = timelineChannelId === channelId ? focusTargetRowKey : null
   const prevRowMapRef = useRef<Map<string, MessageTimelineRow>>(new Map())
   const rows = useMemo(() => {
-    const newRows = buildTimelineRows(activeTimelineState, messages, pendingMessages, messageRowKeys)
+    const newRows = buildTimelineRows(activeTimelineState, messages, pendingMessages, pendingInteractions, messageRowKeys)
     // Stabilize row object references so memo(ListItem) can skip unchanged rows.
     // buildTimelineRows always creates new wrapper objects even for unchanged messages;
     // reusing the previous object when content is identical prevents all ~50 visible
@@ -1125,7 +1240,7 @@ export function useMessagePagination(
     })
     prevRowMapRef.current = new Map(stabilized.map((r) => [r.key, r]))
     return stabilized
-  }, [activeTimelineState, messageRowKeys, messages, pendingMessages])
+  }, [activeTimelineState, messageRowKeys, messages, pendingInteractions, pendingMessages])
   const mode = activeTimelineState?.mode ?? 'live-tail'
   const activeTargetMessageId =
     jumpRequest?.messageId ??
@@ -1159,6 +1274,50 @@ export function useMessagePagination(
     if (!channelId || !channelLastMessageId) return
     updateLastMessage(channelId, channelLastMessageId)
   }, [channelId, channelLastMessageId, updateLastMessage])
+
+  useEffect(() => {
+    setExhaustedLatestMessageId(undefined)
+  }, [channelId])
+
+  useEffect(() => {
+    if (
+      exhaustedLatestMessageId != null &&
+      rawKnownLatestMessageId != null &&
+      compareSnowflakes(rawKnownLatestMessageId, exhaustedLatestMessageId) > 0
+    ) {
+      setExhaustedLatestMessageId(undefined)
+    }
+  }, [exhaustedLatestMessageId, rawKnownLatestMessageId])
+
+  useLayoutEffect(() => {
+    if (!channelId || !timelineState || rawKnownLatestMessageId == null) return
+
+    const messageMap = new Map(
+      messages
+        .filter((message) => message.id != null)
+        .map((message) => [String(message.id), message] as const),
+    )
+    if (
+      messageMap.has(rawKnownLatestMessageId) ||
+      !stateContainsLoadedMessage(timelineState, rawKnownLatestMessageId)
+    ) {
+      return
+    }
+
+    const materializedMessages = collectMaterializedMessages(timelineState.segments, messageMap)
+    const newestMessage = getNewestMessage(materializedMessages)
+    const nextLatestPosition = getBoundaryPosition(newestMessage)
+    setExhaustedLatestMessageId(rawKnownLatestMessageId)
+    if (newestMessage?.id != null) {
+      updateLastMessage(channelId, String(newestMessage.id))
+    }
+    setTimelineState((existing) => existing
+      ? pruneMissingLoadedMessages(existing, messageMap, {
+          dropNewerEdgeGaps: true,
+          nextChannelMaxPosition: nextLatestPosition,
+        })
+      : existing)
+  }, [channelId, messages, rawKnownLatestMessageId, timelineState, updateLastMessage])
 
   const loadLatestWindow = useCallback(async (cid: string, signal?: AbortSignal) => {
     const latestWindow = await fetchLatestWindow(cid, signal)
@@ -1266,6 +1425,54 @@ export function useMessagePagination(
       }
     }
   }, [applyTimelineSnapshot, setMessages])
+
+  useLayoutEffect(() => {
+    if (!channelId || !timelineState) return
+    if (timelineChannelId !== channelId) return
+    if (pendingMessages.length === 0) return
+    if (!hasEdgeGap(timelineState, 'newer')) return
+
+    navigationFetchRef.current?.abort()
+    Object.values(gapFetchesRef.current).forEach((fetchState) => fetchState.controller.abort())
+    gapFetchesRef.current = {}
+    setIsLoadingInitial(false)
+    setIsLoadingOlder(false)
+    setIsLoadingNewer(false)
+
+    const presentMessages = takeNewestMessages(messages, PAGE_SIZE)
+    const latestPosition = Math.max(
+      getBoundaryPosition(getNewestMessage(presentMessages)) ?? 0,
+      timelineState.channelMaxPosition ?? 0,
+    ) || undefined
+
+    applyTimelineSnapshot(channelId, buildSingleIslandState(presentMessages, {
+      mode: 'live-tail',
+      latestPosition,
+      unreadSeparatorAfter: resolveUnreadSeparatorAfter(
+        presentMessages,
+        lastReadIdRef.current,
+        knownLatestMessageIdRef.current,
+      ),
+      olderHasMoreFallback: presentMessages.length >= PAGE_SIZE || hasEdgeGap(timelineState, 'older'),
+      newerHasMoreFallback: false,
+    }), null)
+
+    const controller = new AbortController()
+    navigationFetchRef.current = controller
+    void loadLatestWindow(channelId, controller.signal).catch((error) => {
+      if (!controller.signal.aborted && !isRequestCanceled(error)) {
+        navigationFetchRef.current = null
+      }
+    })
+  }, [
+    applyTimelineSnapshot,
+    channelId,
+    loadLatestWindow,
+    messages,
+    pendingMessages.length,
+    timelineState,
+    timelineChannelId,
+  ])
 
   useEffect(() => {
     if (!channelId) {
@@ -1480,6 +1687,15 @@ export function useMessagePagination(
           .filter((m) => m.id != null)
           .map((m) => [String(m.id), m] as const),
       )
+      if (
+        rawKnownLatestMessageId != null &&
+        !messageMap.has(rawKnownLatestMessageId) &&
+        stateContainsLoadedMessage(timelineState, rawKnownLatestMessageId)
+      ) {
+        // The loaded latest message was removed locally; layout cleanup will prune it
+        // without flashing a synthetic newer gap.
+        return
+      }
       const loadedSegments = timelineState.segments.filter(
         (segment): segment is LoadedTimelineSegment => segment.type === 'loaded',
       )
@@ -1522,7 +1738,7 @@ export function useMessagePagination(
 
     setTimelineChannelId(channelId)
     setTimelineState(nextState)
-  }, [channelId, knownLatestMessageId, messages, timelineState])
+  }, [channelId, knownLatestMessageId, messages, rawKnownLatestMessageId, timelineState])
 
   useEffect(() => {
     if (!timelineState) return
@@ -1622,11 +1838,25 @@ export function useMessagePagination(
         )
 
         setMessages(cid, nextStoreMessages)
+        const exhaustedByCount = (response.data ?? []).length < PAGE_SIZE
+        const loadedNewestMessage = getNewestMessage(nextStoreMessages)
+        const staleKnownLatestId = knownLatestMessageIdRef.current
+        if (
+          gap.direction === 'newer' &&
+          exhaustedByCount &&
+          staleKnownLatestId != null &&
+          loadedNewestMessage?.id != null &&
+          compareSnowflakes(loadedNewestMessage.id, staleKnownLatestId) < 0
+        ) {
+          setExhaustedLatestMessageId(staleKnownLatestId)
+          updateLastMessage(cid, String(loadedNewestMessage.id))
+        }
+
         setTimelineState((existing) => {
           if (!existing) return existing
 
           return applyGapBatchToState(existing, gapKey, batch, {
-            exhaustedByCount: (response.data ?? []).length < PAGE_SIZE,
+            exhaustedByCount,
             latestPosition: existing.channelMaxPosition,
             knownLatestId: knownLatestMessageIdRef.current,
             messageMap: nextMessageMap,
@@ -1657,7 +1887,7 @@ export function useMessagePagination(
           }
         }
       })
-  }, [setMessages])
+  }, [setMessages, updateLastMessage])
 
   const loadOlder = useCallback(() => {
     const firstOlderGap = timelineStateRef.current?.segments.find((segment) =>

@@ -11,6 +11,8 @@ import { useAuthStore } from '@/stores/authStore'
 import { useDMCallStore } from '@/stores/dmCallStore'
 import { hasDMCallParticipants } from './dmCallApi'
 import { useEmojiStore } from '@/stores/emojiStore'
+import { useInteractionStore, type InteractionStatusEvent } from '@/stores/interactionStore'
+import { useGatewayConnectionStore } from '@/stores/gatewayConnectionStore'
 import { playMentionSound } from '@/lib/sounds'
 import { refreshAuthToken } from '@/lib/authRefresh'
 import { ChannelType, type DtoChannel, type DtoMessage, type DtoMessageReaction } from '@/types'
@@ -60,8 +62,10 @@ const explicitChannelCounts = new Map<string, number>()
 const visibleChannelCounts = new Map<string, number>()
 const activePresenceSubs = new Set<string>()
 
-// Own status kept in sync with presenceStore.ownStatus
-let currentOwnStatus: UserStatus = 'online'
+// Own status is split into a sticky global manual override and this session's
+// automatic activity status. `null` manual status means "automatic mode".
+let currentManualStatus: UserStatus | null = null
+let currentSessionStatus: UserStatus = 'online'
 // Custom status text included in every op:3 presence broadcast
 let currentCustomStatusText = ''
 // Current voice channel ID — included in every op:3 presence broadcast
@@ -85,6 +89,7 @@ const CLIENT_INSTANCE_STORAGE_KEY = 'gochat:ws:client_instance_id'
 // Reset to false each time createSocket() opens a new socket. Used in onClose()
 // to distinguish auth failures (never got op:1) from normal network drops.
 let authSucceeded = false
+let lastPresenceSignature = ''
 
 // Timestamp when the current socket's 'open' event fired.
 // A close before AUTH_QUICK_CLOSE_MS ms after open strongly indicates the
@@ -109,6 +114,46 @@ function sendJson(data: unknown) {
   if (socket?.readyState === WebSocket.OPEN) {
     socket.send(_bigJsonStringify(data))
   }
+}
+
+function buildPresenceData(
+  status: UserStatus,
+  options?: {
+    manual?: boolean
+    customStatusTextProvided?: boolean
+    voiceChannelId?: string | null
+    clearVoiceChannel?: boolean
+    selfVideo?: boolean
+    mute?: boolean
+    deafen?: boolean
+  },
+) {
+  const customStatusTextProvided = options?.customStatusTextProvided ?? false
+  const voiceChannelId = options?.voiceChannelId ?? currentVoiceChannelId
+  return {
+    status,
+    platform: 'web',
+    ...(options?.manual ? { manual: true } : {}),
+    ...(customStatusTextProvided || currentCustomStatusText
+      ? { custom_status_text: currentCustomStatusText }
+      : {}),
+    ...(options?.clearVoiceChannel
+      ? { voice_channel_id: 0n }
+      : voiceChannelId
+        ? { voice_channel_id: BigInt(voiceChannelId) }
+        : {}),
+    self_video: options?.selfVideo ?? currentSelfVideo,
+    ...(options?.mute !== undefined ? { mute: options.mute } : {}),
+    ...(options?.deafen !== undefined ? { deafen: options.deafen } : {}),
+  }
+}
+
+function sendPresenceData(data: ReturnType<typeof buildPresenceData>) {
+  if (socket?.readyState !== WebSocket.OPEN) return
+  const encoded = _bigJsonStringify({ op: 3, d: data })
+  if (encoded === lastPresenceSignature) return
+  socket.send(encoded)
+  lastPresenceSignature = encoded
 }
 
 function getClientInstanceId(): string {
@@ -260,6 +305,7 @@ function syncChannelSubscriptions() {
 
 function scheduleReconnect() {
   if (intentionalClose || !currentToken) return
+  useGatewayConnectionStore.getState().setStatus('reconnecting')
   clearReconnectTimer()
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null
@@ -289,6 +335,7 @@ function resetReconnectDelay() {
  */
 async function refreshTokenAndReconnect() {
   if (intentionalClose || !currentToken || isRefreshingToken) return
+  useGatewayConnectionStore.getState().setStatus('reconnecting')
   isRefreshingToken = true
   try {
     await refreshAuthToken({ openModalOnFailure: true })
@@ -318,17 +365,17 @@ function resubscribe() {
   }
   syncChannelSubscriptions()
 
-  // Re-send own presence status (with custom text and voice channel if set)
-  sendJson({
-    op: 3,
-    d: {
-      status: currentOwnStatus,
-      platform: 'web',
-      ...(currentCustomStatusText ? { custom_status_text: currentCustomStatusText } : {}),
-      ...(currentVoiceChannelId ? { voice_channel_id: BigInt(currentVoiceChannelId) } : {}),
-      self_video: currentSelfVideo,
-    },
-  })
+  // Re-send own presence. Manual online means "clear override and return to
+  // automatic"; if this session is currently auto-idle we then send that
+  // session state without touching the global override again.
+  if (currentManualStatus) {
+    sendPresenceData(buildPresenceData(currentManualStatus, { manual: true }))
+  } else {
+    sendPresenceData(buildPresenceData('online', { manual: true }))
+    if (currentSessionStatus !== 'online') {
+      sendPresenceData(buildPresenceData(currentSessionStatus))
+    }
+  }
 
   // Re-subscribe to tracked users' presence
   if (activePresenceSubs.size > 0) {
@@ -489,6 +536,8 @@ interface WsDmNotification {
   }
 }
 
+type WsApplicationCommandInteractionStatus = InteractionStatusEvent
+
 interface WsThreadEvent {
   guild_id?: string | number
   thread?: DtoChannel
@@ -576,6 +625,7 @@ function handleMessage(event: MessageEvent) {
   // the client's auth token.  Save the session_id for reconnect use.
   if (op === 1) {
     authSucceeded = true   // auth confirmed — onClose will use normal backoff if it fires
+    useGatewayConnectionStore.getState().setStatus('authenticated')
     resetReconnectDelay()
     const hello = d as WsHelloData | undefined
     // Persist session_id so we can pass it as heartbeat_session_id on reconnect,
@@ -605,6 +655,7 @@ function handleMessage(event: MessageEvent) {
       window.dispatchEvent(new CustomEvent('ws:gateway_ready', { detail: ready }))
     }
     resubscribe()
+    useGatewayConnectionStore.getState().markReady()
     return
   }
 
@@ -681,6 +732,19 @@ function handleMessage(event: MessageEvent) {
 
   // ── Op 0: dispatched events ───────────────────────────────────────────────
   if (op === 0) {
+    // t=601: invoker-only application command lifecycle status.
+    if (t === 601) {
+      const eventData = d as WsApplicationCommandInteractionStatus | undefined
+      if (eventData) {
+        useInteractionStore.getState().applyInteractionStatus(eventData)
+        if (eventData.message?.channel_id !== undefined) {
+          useMessageStore.getState().receiveMessage(String(eventData.message.channel_id), eventData.message)
+        }
+      }
+      window.dispatchEvent(new CustomEvent('ws:application_command_interaction_status', { detail: d }))
+      return
+    }
+
     // ── Message events ───────────────────────────────────────────────────────
 
     // t=100: Message Create (channel subscription)
@@ -1312,6 +1376,8 @@ function createSocket(token: string) {
   // Reset auth-tracking state for the new socket
   authSucceeded = false
   socketOpenTime = null
+  lastPresenceSignature = ''
+  useGatewayConnectionStore.getState().setStatus('connecting')
 
   // Close any existing socket without triggering the reconnect path
   if (socket) {
@@ -1325,6 +1391,7 @@ function createSocket(token: string) {
   socket.addEventListener('message', handleMessage)
   socket.addEventListener('close', onClose)
   socket.addEventListener('open', () => {
+    useGatewayConnectionStore.getState().setStatus('authenticating')
     socketOpenTime = Date.now()
     const helloData: Record<string, unknown> = {
       token,
@@ -1345,12 +1412,21 @@ function onClose() {
   clearHeartbeat()
   socket = null
   currentConnectionId = null
+  lastPresenceSignature = ''
 
   const openTime = socketOpenTime
   socketOpenTime = null
 
-  if (intentionalClose) return
-  if (isNetworkOffline) return  // 'online' event will trigger reconnect
+  if (intentionalClose) {
+    useGatewayConnectionStore.getState().reset()
+    return
+  }
+  if (isNetworkOffline) {
+    useGatewayConnectionStore.getState().setStatus('offline')
+    return  // 'online' event will trigger reconnect
+  }
+
+  useGatewayConnectionStore.getState().setStatus('disconnected')
 
   if (!authSucceeded) {
     // Socket closed before op:1 was received.
@@ -1379,6 +1455,7 @@ if (typeof window !== 'undefined') {
   // Network went away — stop burning the reconnect backoff budget
   window.addEventListener('offline', () => {
     isNetworkOffline = true
+    useGatewayConnectionStore.getState().setStatus('offline')
     clearReconnectTimer()
     clearHeartbeat()
     // Leave a live socket alone; it will close on its own and onClose will bail
@@ -1389,6 +1466,7 @@ if (typeof window !== 'undefined') {
   window.addEventListener('online', () => {
     isNetworkOffline = false
     if (!intentionalClose && currentToken && socket?.readyState !== WebSocket.OPEN) {
+      useGatewayConnectionStore.getState().setStatus('reconnecting')
       clearReconnectTimer()
       reconnectDelay = 1_000
       void refreshTokenAndReconnect()
@@ -1404,6 +1482,7 @@ if (typeof window !== 'undefined') {
       currentToken &&
       socket?.readyState !== WebSocket.OPEN
     ) {
+      useGatewayConnectionStore.getState().setStatus('reconnecting')
       clearReconnectTimer()
       reconnectDelay = 1_000
       void refreshTokenAndReconnect()
@@ -1412,6 +1491,7 @@ if (typeof window !== 'undefined') {
 
   window.addEventListener('auth:refresh-restored', () => {
     if (!intentionalClose && currentToken && socket?.readyState !== WebSocket.OPEN) {
+      useGatewayConnectionStore.getState().setStatus('reconnecting')
       clearReconnectTimer()
       reconnectDelay = 1_000
       scheduleReconnect()
@@ -1511,21 +1591,26 @@ export function addPresenceSubscription(userIds: string[]) {
 
 // Broadcast our own presence status (op=3).
 // Pass customStatusText to update it; omit (undefined) to keep the current value.
-export function sendPresenceStatus(status: UserStatus, customStatusText?: string) {
-  currentOwnStatus = status
-  if (customStatusText !== undefined) currentCustomStatusText = customStatusText
-  if (socket?.readyState === WebSocket.OPEN) {
-    sendJson({
-      op: 3,
-      d: {
-        status,
-        platform: 'web',
-        ...(currentCustomStatusText ? { custom_status_text: currentCustomStatusText } : {}),
-        ...(currentVoiceChannelId ? { voice_channel_id: BigInt(currentVoiceChannelId) } : {}),
-        self_video: currentSelfVideo,
-      },
-    })
+export function sendPresenceStatus(
+  status: UserStatus,
+  customStatusText?: string,
+  options?: { manual?: boolean },
+) {
+  if (options?.manual) {
+    if (status === 'online') {
+      currentManualStatus = null
+      currentSessionStatus = 'online'
+    } else {
+      currentManualStatus = status
+    }
+  } else {
+    currentSessionStatus = status
   }
+  if (customStatusText !== undefined) currentCustomStatusText = customStatusText
+  sendPresenceData(buildPresenceData(status, {
+    manual: options?.manual,
+    customStatusTextProvided: customStatusText !== undefined,
+  }))
 }
 
 // Update the tracked voice channel for presence broadcasts.
@@ -1534,17 +1619,27 @@ export function setPresenceVoiceChannel(channelId: string | null) {
   const previous = currentVoiceChannelId
   currentVoiceChannelId = channelId
   if (previous && channelId === null && socket?.readyState === WebSocket.OPEN) {
-    sendJson({
-      op: 3,
-      d: {
-        status: currentOwnStatus,
-        platform: 'web',
-        ...(currentCustomStatusText ? { custom_status_text: currentCustomStatusText } : {}),
-        voice_channel_id: 0,
-        self_video: currentSelfVideo,
-      },
-    })
+    sendPresenceData(buildPresenceData(currentSessionStatus, {
+      clearVoiceChannel: true,
+      selfVideo: false,
+    }))
   }
+}
+
+export function sendPresenceVoiceState(options: {
+  channelId: string
+  mute: boolean
+  deafen: boolean
+  selfVideo: boolean
+}) {
+  currentVoiceChannelId = options.channelId
+  currentSelfVideo = options.selfVideo
+  sendPresenceData(buildPresenceData(currentSessionStatus, {
+    voiceChannelId: options.channelId,
+    mute: options.mute,
+    deafen: options.deafen,
+    selfVideo: options.selfVideo,
+  }))
 }
 
 // Update the tracked local camera state for presence broadcasts.
@@ -1579,10 +1674,17 @@ export function subscribe(guildIds: string[], channelIds: string[]) {
 
 export function disconnect() {
   intentionalClose = true
+  useGatewayConnectionStore.getState().reset()
   currentToken = null
   currentSessionId = null
   currentConnectionId = null
   currentGeneration = 0
+  currentManualStatus = null
+  currentSessionStatus = 'online'
+  currentCustomStatusText = ''
+  currentVoiceChannelId = null
+  currentSelfVideo = false
+  lastPresenceSignature = ''
   lastEventId = 0
   activeGuildSubs.clear()
   explicitChannelCounts.clear()

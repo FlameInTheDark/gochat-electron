@@ -14,6 +14,7 @@ import { hasDMCallParticipants, normalizeDMCall, type RawDMCallSummary } from '@
 import i18n from '@/i18n'
 import type { ModelUserSettingsData, UserUserSettingsResponse } from '@/client'
 import { mergeGuildListPreservingAssets, mergeGuildPreservingAssets, mergeUserPreservingAssets } from '@/lib/entityMerge'
+import { useGatewayConnectionStore } from '@/stores/gatewayConnectionStore'
 
 const VALID_STATUSES = new Set<string>(['online', 'idle', 'dnd', 'offline'])
 
@@ -35,7 +36,7 @@ interface ThreadLinkQueryResult {
   missing: boolean
 }
 
-interface GatewayReadyDetail extends Partial<UserUserSettingsResponse> {
+interface GatewayReadyDetail extends Omit<Partial<UserUserSettingsResponse>, 'dm_calls'> {
   user?: DtoUser
   settings?: ModelUserSettingsData
   guilds?: DtoGuild[]
@@ -81,17 +82,45 @@ function getThreadIdFromEvent(detail: WsThreadEventDetail | undefined): string |
   return undefined
 }
 
+function applySavedPresenceStatus(
+  savedStatus: string | undefined,
+  savedCustomText: string | undefined,
+  setters: {
+    setManualStatus: (status: UserStatus | null) => void
+    setSessionStatus: (status: UserStatus) => void
+    setCustomStatusText: (text: string) => void
+  },
+) {
+  if (savedCustomText !== undefined) {
+    setters.setCustomStatusText(savedCustomText)
+  }
+  if (!savedStatus || !VALID_STATUSES.has(savedStatus)) return
+
+  const status = savedStatus as UserStatus
+  if (status === 'online') {
+    setters.setManualStatus(null)
+    setters.setSessionStatus('online')
+    sendPresenceStatus('online', savedCustomText, { manual: true })
+    return
+  }
+  setters.setManualStatus(status)
+  sendPresenceStatus(status, savedCustomText, { manual: true })
+}
+
 export function useWebSocket() {
   const token = useAuthStore((s) => s.token)
+  const gatewayReady = useGatewayConnectionStore((s) => s.ready)
   const queryClient = useQueryClient()
-  const setOwnStatus = usePresenceStore((s) => s.setOwnStatus)
+  const setManualStatus = usePresenceStore((s) => s.setManualStatus)
+  const setSessionStatus = usePresenceStore((s) => s.setSessionStatus)
+  const setCustomStatusText = usePresenceStore((s) => s.setCustomStatusText)
 
   // Fetch all user guilds so we can subscribe to guild-level WS events.
   // Uses the same queryKey as ServerSidebar — no extra network request.
   const { data: guilds } = useQuery({
     queryKey: ['guilds'],
     queryFn: () => userApi.userMeGuildsGet().then((r) => r.data ?? []),
-    enabled: !!token,
+    enabled: !!token && gatewayReady,
   })
 
   // Keep a stable ref to guilds so the token effect can read the latest value
@@ -210,10 +239,11 @@ export function useWebSocket() {
 
       const savedStatus = settings.status?.status
       const savedCustomText = settings.status?.custom_status_text ?? ''
-      if (savedStatus && VALID_STATUSES.has(savedStatus)) {
-        setOwnStatus(savedStatus as UserStatus)
-        sendPresenceStatus(savedStatus as UserStatus, savedCustomText)
-      }
+      applySavedPresenceStatus(savedStatus, savedCustomText, {
+        setManualStatus,
+        setSessionStatus,
+        setCustomStatusText,
+      })
 
       useFolderStore.getState().loadFromSettings(settings.guild_folders, settings.guilds)
 
@@ -234,7 +264,7 @@ export function useWebSocket() {
 
     window.addEventListener('ws:gateway_ready', onGatewayReady)
     return () => window.removeEventListener('ws:gateway_ready', onGatewayReady)
-  }, [queryClient, setOwnStatus])
+  }, [queryClient, setCustomStatusText, setManualStatus, setSessionStatus])
 
   // ── React to guild-related WS events ──────────────────────────────────────
 
@@ -510,10 +540,12 @@ export function useWebSocket() {
 
       // Presence status
       const savedStatus = settings.status?.status
-      if (savedStatus && VALID_STATUSES.has(savedStatus)) {
-        setOwnStatus(savedStatus as UserStatus)
-        sendPresenceStatus(savedStatus as UserStatus)
-      }
+      const savedCustomText = settings.status?.custom_status_text ?? ''
+      applySavedPresenceStatus(savedStatus, savedCustomText, {
+        setManualStatus,
+        setSessionStatus,
+        setCustomStatusText,
+      })
 
       // Guild folder layout
       useFolderStore.getState().loadFromSettings(settings.guild_folders, settings.guilds)
@@ -558,5 +590,5 @@ export function useWebSocket() {
 
     window.addEventListener('ws:user_settings_update', onUserSettingsUpdate)
     return () => window.removeEventListener('ws:user_settings_update', onUserSettingsUpdate)
-  }, [queryClient, setOwnStatus])
+  }, [queryClient, setCustomStatusText, setManualStatus, setSessionStatus])
 }

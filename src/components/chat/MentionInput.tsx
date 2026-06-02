@@ -1,8 +1,8 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { Fragment, forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Hash, Shield, Paperclip, SendHorizontal } from 'lucide-react'
+import { Bot, Hash, Shield, Paperclip, SendHorizontal, X } from 'lucide-react'
 import { guildApi, rolesApi } from '@/api/client'
 import { ChannelType } from '@/types'
 import type { DtoChannel, DtoGuild } from '@/client'
@@ -16,6 +16,14 @@ import { useEmojiStore } from '@/stores/emojiStore'
 import { emojiUrl } from '@/lib/emoji'
 import { allEmojis } from '@/lib/emojiData'
 import { useGuildPermissions } from '@/hooks/useGuildPermissions'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import {
+  applicationCommandsApi,
+  type ApplicationCommand,
+  type ApplicationCommandOption,
+  type InteractionOptionValue,
+} from '@/lib/applicationCommandsApi'
+import { PermissionBits } from '@/lib/permissions'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -30,7 +38,14 @@ interface SuggestionItem {
   unicodeEmoji?: string // unicode emoji character (for unicode emoji type)
   serverName?: string  // server name for custom emoji
   description?: string // slash command result preview
+  section?: 'internal' | 'application'
+  applicationCommand?: ApplicationCommand
+  commandPath?: ApplicationCommandOption[]
+  optionPreview?: ApplicationCommandOption[]
 }
+
+type CommandOptionDrafts = Record<string, string>
+type CommandPath = ApplicationCommandOption[]
 
 // ── Slash commands ────────────────────────────────────────────────────────────
 
@@ -38,6 +53,8 @@ const SLASH_COMMAND_LIST: Array<{ name: string; description: string }> = [
   { name: 'tableflip', description: '(╯°□°)╯︵ ┻━┻' },
   { name: 'unflip', description: '┬─┬ノ( º _ ºノ)' },
 ]
+
+const maxSlashSuggestionRows = 50
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -213,12 +230,168 @@ function roleColor(color: number | undefined): string | null {
   return `rgb(${r},${g},${b})`
 }
 
+function isValueOption(option: ApplicationCommandOption): boolean {
+  return option.type >= 3 && option.type <= 11
+}
+
+function commandGuildContextAllowed(command: ApplicationCommand): boolean {
+  return !command.contexts || command.contexts.length === 0 || command.contexts.includes(0)
+}
+
+function commandAllowedByMemberPermissions(command: ApplicationCommand, effectivePermissions: number, isPrivileged: boolean): boolean {
+  const raw = command.default_member_permissions
+  if (raw === null || raw === undefined || raw === '') return true
+  if (isPrivileged) return true
+  try {
+    const required = BigInt(String(raw))
+    const effective = BigInt(Math.trunc(effectivePermissions))
+    return (effective & required) === required
+  } catch {
+    return false
+  }
+}
+
+function optionPlaceholder(option: ApplicationCommandOption): string {
+  if (option.choices?.length) return option.choices.map((choice) => choice.name).slice(0, 3).join(', ')
+  switch (option.type) {
+    case 4:
+      return 'integer'
+    case 5:
+      return 'true / false'
+    case 6:
+      return 'user'
+    case 7:
+      return 'channel'
+    case 8:
+      return 'role'
+    case 9:
+      return 'mention'
+    case 10:
+      return 'number'
+    case 11:
+      return 'attachment'
+    default:
+      return option.name
+  }
+}
+
+function coerceOptionValue(option: ApplicationCommandOption, rawValue: string): string | number | boolean {
+  const value = rawValue.trim()
+  if (option.type === 4) {
+    const parsed = Number.parseInt(value, 10)
+    return Number.isNaN(parsed) ? value : parsed
+  }
+  if (option.type === 10) {
+    const parsed = Number.parseFloat(value)
+    return Number.isNaN(parsed) ? value : parsed
+  }
+  if (option.type === 5) {
+    return value.toLowerCase() === 'true' || value === '1' || value.toLowerCase() === 'yes'
+  }
+  return value
+}
+
+function visibleCommandOptions(options: ApplicationCommandOption[]): ApplicationCommandOption[] {
+  return options.filter(isValueOption)
+}
+
+function commandPathText(command: ApplicationCommand, path: CommandPath = []): string {
+  return [command.name, ...path.map((option) => option.name)].join(' ')
+}
+
+function commandPathDescription(command: ApplicationCommand, path: CommandPath = []): string {
+  return path[path.length - 1]?.description || command.description || ''
+}
+
+function commandOptionsForPath(command: ApplicationCommand | null, path: CommandPath): ApplicationCommandOption[] {
+  if (!command) return []
+  const source = path[path.length - 1]?.options ?? command.options ?? []
+  return visibleCommandOptions(source)
+}
+
+function flattenApplicationCommand(command: ApplicationCommand): Array<{
+  path: CommandPath
+  label: string
+  description: string
+  options: ApplicationCommandOption[]
+}> {
+  const options = command.options ?? []
+  const subcommands = options.filter((option) => option.type === 1)
+  const groups = options.filter((option) => option.type === 2)
+  const rows: Array<{
+    path: CommandPath
+    label: string
+    description: string
+    options: ApplicationCommandOption[]
+  }> = []
+
+  for (const subcommand of subcommands) {
+    const path = [subcommand]
+    rows.push({
+      path,
+      label: commandPathText(command, path),
+      description: commandPathDescription(command, path),
+      options: commandOptionsForPath(command, path),
+    })
+  }
+
+  for (const group of groups) {
+    for (const subcommand of group.options?.filter((option) => option.type === 1) ?? []) {
+      const path = [group, subcommand]
+      rows.push({
+        path,
+        label: commandPathText(command, path),
+        description: commandPathDescription(command, path),
+        options: commandOptionsForPath(command, path),
+      })
+    }
+  }
+
+  if (rows.length > 0) return rows
+
+  return [{
+    path: [],
+    label: command.name,
+    description: command.description || '',
+    options: commandOptionsForPath(command, []),
+  }]
+}
+
+function wrapCommandOptionsForPath(path: CommandPath, options: InteractionOptionValue[]): InteractionOptionValue[] {
+  if (path.length === 0) return options
+  if (path.length === 1) {
+    return [{
+      name: path[0]!.name,
+      type: path[0]!.type,
+      options,
+    }]
+  }
+  return [{
+    name: path[0]!.name,
+    type: path[0]!.type,
+    options: [{
+      name: path[1]!.name,
+      type: path[1]!.type,
+      options,
+    }],
+  }]
+}
+
+function commandOptionPreviewLabel(option: ApplicationCommandOption): string {
+  return option.required ? option.name : `${option.name}?`
+}
+
+function fallbackInitial(name: string | undefined): string {
+  return name?.trim().charAt(0).toUpperCase() || '?'
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 interface Props {
   channelId: string
   channelName?: string
   onSend: (content: string) => void
+  onApplicationCommand?: (command: ApplicationCommand, options: InteractionOptionValue[]) => void
   onTyping: () => void
   disabled?: boolean
   topBar?: React.ReactNode
@@ -250,6 +423,7 @@ const MentionInput = forwardRef<MentionInputHandle, Props>(function MentionInput
   channelId,
   channelName,
   onSend,
+  onApplicationCommand,
   onTyping,
   disabled = false,
   topBar,
@@ -266,8 +440,14 @@ const MentionInput = forwardRef<MentionInputHandle, Props>(function MentionInput
 
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<HTMLDivElement>(null)
+  const commandOptionInputRef = useRef<HTMLInputElement>(null)
   const [suggestions, setSuggestions] = useState<SuggestionItem[]>([])
   const [activeIdx, setActiveIdx] = useState(0)
+  const [slashQuery, setSlashQuery] = useState<string | null>(null)
+  const [selectedApplicationCommand, setSelectedApplicationCommand] = useState<ApplicationCommand | null>(null)
+  const [selectedCommandPath, setSelectedCommandPath] = useState<CommandPath>([])
+  const [commandOptionDrafts, setCommandOptionDrafts] = useState<CommandOptionDrafts>({})
+  const [activeCommandOptionName, setActiveCommandOptionName] = useState<string | null>(null)
   const [emojiOpen, setEmojiOpen] = useState(false)
   const [gifOpen, setGifOpen] = useState(false)
   const [pickerBottom, setPickerBottom] = useState(64)
@@ -327,6 +507,97 @@ const MentionInput = forwardRef<MentionInputHandle, Props>(function MentionInput
     staleTime: 60_000,
   })
 
+  const { data: commandIndex } = useQuery({
+    queryKey: ['application-command-index', serverId],
+    queryFn: () => applicationCommandsApi.guildCommandIndex(serverId!),
+    enabled: slashQuery !== null && !!serverId && !disabled,
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+  })
+
+  const visibleApplicationCommands = useMemo(() => {
+    if (!serverId || !permissions.has(PermissionBits.USE_APPLICATION_COMMANDS)) return []
+    return (commandIndex?.application_commands ?? []).filter((command) => (
+      command.type === 1 &&
+      commandGuildContextAllowed(command) &&
+      commandAllowedByMemberPermissions(command, permissions.effectivePermissions, permissions.isOwner || permissions.isAdmin)
+    ))
+  }, [commandIndex?.application_commands, permissions, serverId])
+
+  const slashSuggestions = useMemo(() => {
+    if (slashQuery === null) return []
+    const q = slashQuery.toLowerCase()
+    const internalItems: SuggestionItem[] = SLASH_COMMAND_LIST
+      .filter((cmd) => !q || cmd.name.startsWith(q))
+      .map((cmd) => ({
+        type: 'slash' as const,
+        id: `internal:${cmd.name}`,
+        display: `/${cmd.name}`,
+        token: `/${cmd.name}`,
+        name: cmd.name,
+        description: cmd.description,
+        section: 'internal' as const,
+      }))
+    const applicationItems: SuggestionItem[] = visibleApplicationCommands
+      .flatMap((cmd) => flattenApplicationCommand(cmd).map((row) => ({
+        type: 'slash' as const,
+        id: `application:${String(cmd.id)}:${row.label}`,
+        display: `/${row.label}`,
+        token: `/${row.label}`,
+        name: row.label,
+        description: row.description,
+        section: 'application' as const,
+        applicationCommand: cmd,
+        commandPath: row.path,
+        optionPreview: row.options,
+      })))
+      .filter((item) => {
+        if (!q) return true
+        const haystack = `${item.name} ${item.description ?? ''} ${item.applicationCommand?.bot_name ?? ''}`.toLowerCase()
+        return haystack.includes(q)
+      })
+    const maxApplicationItems = Math.max(0, maxSlashSuggestionRows - internalItems.length)
+    return [...applicationItems.slice(0, maxApplicationItems), ...internalItems]
+  }, [slashQuery, visibleApplicationCommands])
+
+  const activeSuggestions = slashQuery === null ? suggestions : slashSuggestions
+  const commandOptions = useMemo(
+    () => commandOptionsForPath(selectedApplicationCommand, selectedCommandPath),
+    [selectedApplicationCommand, selectedCommandPath],
+  )
+  const selectedCommandDisplay = selectedApplicationCommand
+    ? commandPathText(selectedApplicationCommand, selectedCommandPath)
+    : ''
+  const activeCommandOption = commandOptions.find((option) => option.name === activeCommandOptionName) ?? commandOptions[0]
+  const requiredCommandOptions = useMemo(
+    () => commandOptions.filter((option) => option.required),
+    [commandOptions],
+  )
+  const filledCommandOptionNames = useMemo(() => {
+    const names = new Set<string>()
+    for (const [name, value] of Object.entries(commandOptionDrafts)) {
+      if (value.trim() !== '') names.add(name)
+    }
+    return names
+  }, [commandOptionDrafts])
+  const visibleOptionRows = useMemo(() => {
+    const names = new Set<string>()
+    const rows: ApplicationCommandOption[] = []
+    for (const option of commandOptions) {
+      if (option.required || filledCommandOptionNames.has(option.name) || option.name === activeCommandOption?.name) {
+        if (!names.has(option.name)) {
+          names.add(option.name)
+          rows.push(option)
+        }
+      }
+    }
+    return rows
+  }, [activeCommandOption?.name, commandOptions, filledCommandOptionNames])
+  const hiddenOptionalOptions = useMemo(
+    () => commandOptions.filter((option) => !option.required && !visibleOptionRows.some((row) => row.name === option.name)),
+    [commandOptions, visibleOptionRows],
+  )
+
   function canViewChannel(ch: DtoChannel): boolean {
     return permissions.canViewChannel(ch)
   }
@@ -349,6 +620,10 @@ const MentionInput = forwardRef<MentionInputHandle, Props>(function MentionInput
   }
 
   const focusEditor = useCallback(() => {
+    if (selectedApplicationCommand) {
+      commandOptionInputRef.current?.focus()
+      return
+    }
     const el = editorRef.current
     if (!el || disabled) return
 
@@ -362,7 +637,7 @@ const MentionInput = forwardRef<MentionInputHandle, Props>(function MentionInput
     range.collapse(false)
     selection.removeAllRanges()
     selection.addRange(range)
-  }, [disabled])
+  }, [disabled, selectedApplicationCommand])
 
   function handleComposerMouseDown(e: MouseEvent<HTMLDivElement>) {
     const target = e.target as HTMLElement
@@ -374,7 +649,11 @@ const MentionInput = forwardRef<MentionInputHandle, Props>(function MentionInput
     }
 
     e.preventDefault()
-    focusEditor()
+    if (selectedApplicationCommand) {
+      commandOptionInputRef.current?.focus()
+    } else {
+      focusEditor()
+    }
   }
 
   const insertMentionAtEnd = useCallback((userId: string, name: string) => {
@@ -413,6 +692,7 @@ const MentionInput = forwardRef<MentionInputHandle, Props>(function MentionInput
     function onPointerDown(e: PointerEvent) {
       if (!containerRef.current?.contains(e.target as Node)) {
         setSuggestions([])
+        setSlashQuery(null)
       }
     }
     document.addEventListener('pointerdown', onPointerDown)
@@ -427,21 +707,13 @@ const MentionInput = forwardRef<MentionInputHandle, Props>(function MentionInput
     }
   }, [])
 
-  function computeSlashSuggestions(query: string) {
-    const q = query.toLowerCase()
-    const items: SuggestionItem[] = SLASH_COMMAND_LIST
-      .filter((cmd) => !q || cmd.name.startsWith(q))
-      .map((cmd) => ({
-        type: 'slash' as const,
-        id: cmd.name,
-        display: `/${cmd.name}`,
-        token: `/${cmd.name}`,
-        name: cmd.name,
-        description: cmd.description,
-      }))
-    setSuggestions(items)
-    setActiveIdx(0)
-  }
+  useEffect(() => {
+    if (selectedApplicationCommand) {
+      commandOptionInputRef.current?.focus()
+    } else {
+      editorRef.current?.classList.add('is-empty')
+    }
+  }, [activeCommandOptionName, selectedApplicationCommand])
 
   function computeSuggestions(q: { trigger: '@' | '#' | ':'; query: string }) {
     const query = q.query.toLowerCase()
@@ -582,15 +854,109 @@ const MentionInput = forwardRef<MentionInputHandle, Props>(function MentionInput
     setActiveIdx(0)
   }
 
+  function clearEditor() {
+    const el = editorRef.current
+    if (!el) return
+    while (el.firstChild) {
+      el.removeChild(el.firstChild)
+    }
+    el.classList.add('is-empty')
+  }
+
+  function resetApplicationCommandMode() {
+    setSelectedApplicationCommand(null)
+    setSelectedCommandPath([])
+    setCommandOptionDrafts({})
+    setActiveCommandOptionName(null)
+  }
+
+  function startApplicationCommandMode(command: ApplicationCommand, path: CommandPath = []) {
+    clearEditor()
+    const options = commandOptionsForPath(command, path)
+    const firstOption = options.find((option) => option.required) ?? options[0] ?? null
+    setSelectedApplicationCommand(command)
+    setSelectedCommandPath(path)
+    setCommandOptionDrafts({})
+    setActiveCommandOptionName(firstOption?.name ?? null)
+    setSuggestions([])
+    setSlashQuery(null)
+  }
+
+  function updateCommandOption(optionName: string, value: string) {
+    setCommandOptionDrafts((drafts) => ({ ...drafts, [optionName]: value }))
+  }
+
+  function selectNextCommandOption(direction: 1 | -1 = 1) {
+    if (commandOptions.length === 0) return
+    const currentIndex = activeCommandOption
+      ? commandOptions.findIndex((option) => option.name === activeCommandOption.name)
+      : -1
+    const nextIndex = currentIndex < 0
+      ? 0
+      : (currentIndex + direction + commandOptions.length) % commandOptions.length
+    setActiveCommandOptionName(commandOptions[nextIndex]?.name ?? null)
+  }
+
+  function commandOptionsPayload(): InteractionOptionValue[] | null {
+    const missing = requiredCommandOptions.find((option) => !commandOptionDrafts[option.name]?.trim())
+    if (missing) {
+      setActiveCommandOptionName(missing.name)
+      return null
+    }
+    const payload: InteractionOptionValue[] = []
+    for (const option of commandOptions) {
+      const rawValue = commandOptionDrafts[option.name]
+      if (!rawValue?.trim()) continue
+      payload.push({
+        name: option.name,
+        type: option.type,
+        value: coerceOptionValue(option, rawValue),
+      })
+    }
+    return wrapCommandOptionsForPath(selectedCommandPath, payload)
+  }
+
+  function submitApplicationCommand() {
+    if (!selectedApplicationCommand) return
+    const options = commandOptionsPayload()
+    if (!options) return
+    onApplicationCommand?.(selectedApplicationCommand, options)
+    resetApplicationCommandMode()
+    clearEditor()
+  }
+
+  function handleCommandOptionKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      resetApplicationCommandMode()
+      clearEditor()
+      window.setTimeout(() => editorRef.current?.focus(), 0)
+      return
+    }
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      selectNextCommandOption(e.shiftKey ? -1 : 1)
+      return
+    }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      submitApplicationCommand()
+    }
+  }
+
   function selectSuggestion(item: SuggestionItem) {
     const el = editorRef.current
     if (!el) return
     el.focus()
     if (item.type === 'slash') {
-      // Clear the editor and fire onSend immediately — MessageInput.send() expands the command
-      while (el.firstChild) el.removeChild(el.firstChild)
-      el.classList.add('is-empty')
       setSuggestions([])
+      setSlashQuery(null)
+      if (item.section === 'application' && item.applicationCommand) {
+        startApplicationCommandMode(item.applicationCommand, item.commandPath ?? [])
+        return
+      }
+      resetApplicationCommandMode()
+      clearEditor()
       onSend(`/${item.name}`)
       return
     }
@@ -611,6 +977,7 @@ const MentionInput = forwardRef<MentionInputHandle, Props>(function MentionInput
 
   function handleInput() {
     if (disabled) return
+    if (selectedApplicationCommand) return
     const el = editorRef.current
     if (!el) return
 
@@ -620,8 +987,10 @@ const MentionInput = forwardRef<MentionInputHandle, Props>(function MentionInput
     
     const slashQuery = getSlashQuery(el)
     if (slashQuery !== null) {
-      computeSlashSuggestions(slashQuery)
+      setSlashQuery(slashQuery)
+      setActiveIdx(0)
     } else {
+      setSlashQuery(null)
       const q = getMentionQuery(el)
       if (q) {
         computeSuggestions(q)
@@ -633,6 +1002,10 @@ const MentionInput = forwardRef<MentionInputHandle, Props>(function MentionInput
   }
 
   function handleSend() {
+    if (selectedApplicationCommand) {
+      submitApplicationCommand()
+      return
+    }
     const el = editorRef.current
     if (!el) return
     const content = serialize(el).trim()
@@ -643,6 +1016,8 @@ const MentionInput = forwardRef<MentionInputHandle, Props>(function MentionInput
     }
     el.classList.add('is-empty')
     setSuggestions([])
+    setSlashQuery(null)
+    resetApplicationCommandMode()
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
@@ -652,10 +1027,10 @@ const MentionInput = forwardRef<MentionInputHandle, Props>(function MentionInput
     }
 
     // Suggestion navigation
-    if (suggestions.length > 0) {
+    if (activeSuggestions.length > 0) {
       if (e.key === 'ArrowDown') {
         e.preventDefault()
-        setActiveIdx((i) => Math.min(i + 1, suggestions.length - 1))
+        setActiveIdx((i) => Math.min(i + 1, activeSuggestions.length - 1))
         return
       }
       if (e.key === 'ArrowUp') {
@@ -665,7 +1040,7 @@ const MentionInput = forwardRef<MentionInputHandle, Props>(function MentionInput
       }
       if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') {
         e.preventDefault()
-        const item = suggestions[activeIdx]
+        const item = activeSuggestions[activeIdx]
         if (item) selectSuggestion(item)
         return
       }
@@ -846,79 +1221,177 @@ const MentionInput = forwardRef<MentionInputHandle, Props>(function MentionInput
       onDrop={handleDrop}
     >
       {/* Suggestions popup — sits above the input */}
-      {!disabled && suggestions.length > 0 && (
-        <div className="absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-xl border border-white/[0.1] bg-popover shadow-lg">
-          <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide border-b border-border">
-            {suggestions[0]?.type === 'slash'
-              ? t('chat.commands', 'Commands')
-              : suggestions[0]?.type === 'channel'
-                ? t('chat.channels')
-                : suggestions[0]?.type === 'emoji'
-                  ? 'Emoji'
-                  : t('chat.membersAndRoles')}
-          </div>
-          {suggestions.map((item, i) => (
-            <button
-              key={`${item.type}-${item.id}`}
-              type="button"
-              onMouseDown={(e) => {
-                // prevent blur before click registers
-                e.preventDefault()
-                selectSuggestion(item)
-              }}
-              className={`w-full flex items-center gap-3 px-3 py-2 text-sm transition-colors ${i === activeIdx
-                ? 'bg-accent text-accent-foreground'
-                : 'text-foreground hover:bg-accent/50'
-                }`}
-            >
-              {item.type === 'slash' && (
-                <div className="w-6 h-6 rounded bg-muted shrink-0 flex items-center justify-center text-[13px] font-bold text-muted-foreground">
-                  /
-                </div>
-              )}
-              {item.type === 'emoji' && item.emojiId && (
-                <img
-                  src={emojiUrl(item.emojiId, 44)}
-                  alt={item.name}
-                  className="w-6 h-6 shrink-0 object-contain"
-                />
-              )}
-              {item.type === 'emoji' && item.unicodeEmoji && (
-                <span className="w-6 h-6 shrink-0 flex items-center justify-center text-xl leading-none">{item.unicodeEmoji}</span>
-              )}
-              {item.type === 'channel' && (
-                <Hash className="w-4 h-4 shrink-0 text-muted-foreground" />
-              )}
-              {item.type === 'special' && (
-                <div className="w-6 h-6 rounded-full bg-muted shrink-0 flex items-center justify-center text-[11px] font-semibold text-muted-foreground">
-                  @
-                </div>
-              )}
-              {item.type === 'user' && (
-                <div className="w-6 h-6 rounded-full bg-muted shrink-0 flex items-center justify-center text-[11px] font-semibold">
-                  {item.name.charAt(0).toUpperCase()}
-                </div>
-              )}
-              {item.type === 'role' && (
-                <Shield
-                  className="w-4 h-4 shrink-0"
-                  style={{ color: roleColor(item.color) ?? 'var(--muted-foreground)' }}
-                />
-              )}
-              <span className="font-medium truncate">
-                {item.type === 'slash' ? `/${item.name}` : item.name}
-              </span>
-              {item.type === 'slash' && item.description && (
-                <span className="ml-auto text-xs text-muted-foreground shrink-0 pl-2">{item.description}</span>
-              )}
-              {item.type === 'emoji' && item.serverName && (
-                <span className="ml-auto text-xs text-muted-foreground shrink-0 pl-2 truncate max-w-[120px]">{item.serverName}</span>
-              )}
-              {item.type === 'role' && (
-                <span className="ml-auto text-xs text-muted-foreground shrink-0">{t('chat.role')}</span>
-              )}
-            </button>
-          ))}
+      {!disabled && activeSuggestions.length > 0 && (
+        <div
+          className={cn(
+            'absolute bottom-full left-0 right-0 mb-2 overflow-hidden rounded-md border border-white/[0.1] bg-popover shadow-lg',
+            activeSuggestions[0]?.type === 'slash' && 'max-h-[420px] overflow-y-auto',
+          )}
+        >
+          {activeSuggestions[0]?.type === 'slash' ? (
+            <>
+              {activeSuggestions.map((item, i) => {
+                const previous = activeSuggestions[i - 1]
+                const appKey = item.section === 'application'
+                  ? String(item.applicationCommand?.application_id ?? item.applicationCommand?.id ?? item.id)
+                  : 'internal'
+                const previousAppKey = previous?.section === 'application'
+                  ? String(previous.applicationCommand?.application_id ?? previous.applicationCommand?.id ?? previous.id)
+                  : previous?.section
+                const showSectionHeader = i === 0 || item.section !== previous?.section || appKey !== previousAppKey
+                const appName = item.applicationCommand?.bot_name ?? t('chat.applicationCommands', 'Application commands')
+                const previewOptions = item.optionPreview ?? []
+                const requiredPreview = previewOptions.filter((option) => option.required)
+                const shownOptions = (requiredPreview.length > 0 ? requiredPreview : previewOptions).slice(0, 3)
+                const hiddenOptions = previewOptions.filter((option) => !shownOptions.some((shown) => shown.name === option.name))
+                const hiddenOptionsAreOptional = hiddenOptions.length > 0 && hiddenOptions.every((option) => !option.required)
+                const optionPreviewVisible = i === activeIdx
+
+                return (
+                  <Fragment key={`${item.type}-${item.id}`}>
+                    {showSectionHeader && (
+                      <div className={cn('flex items-center gap-3 px-4 pb-1 pt-3', i > 0 && 'border-t border-border/70')}>
+                        {item.section === 'application' ? (
+                          <Avatar className="h-5 w-5 rounded-md">
+                            <AvatarImage
+                              src={item.applicationCommand?.application_icon ?? undefined}
+                              alt={appName}
+                              className="object-cover"
+                            />
+                            <AvatarFallback className="rounded-md text-[10px]">
+                              {fallbackInitial(appName)}
+                            </AvatarFallback>
+                          </Avatar>
+                        ) : (
+                          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-muted text-xs font-bold text-muted-foreground">
+                            /
+                          </div>
+                        )}
+                        <span className="min-w-0 truncate text-xs font-semibold text-muted-foreground">
+                          {item.section === 'application'
+                            ? appName
+                            : t('chat.internalCommands', 'Built-in commands')}
+                        </span>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      onMouseDown={(e) => {
+                        // prevent blur before click registers
+                        e.preventDefault()
+                        selectSuggestion(item)
+                      }}
+                      className={cn(
+                        'group/command flex w-full items-start gap-3 px-4 py-2 text-left text-sm transition-colors',
+                        i === activeIdx ? 'bg-accent text-accent-foreground' : 'text-foreground hover:bg-accent/50',
+                      )}
+                    >
+                      <div className="w-5 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="shrink-0 font-semibold">/{item.name}</span>
+                          {previewOptions.length > 0 && (
+                            <div
+                              className={cn(
+                                'flex min-w-0 items-center gap-1 overflow-hidden opacity-0 transition-opacity group-hover/command:opacity-100',
+                                optionPreviewVisible && 'opacity-100',
+                              )}
+                            >
+                              {shownOptions.map((option) => (
+                                <span
+                                  key={option.name}
+                                  className="max-w-28 shrink-0 truncate rounded bg-black/45 px-1.5 py-0.5 text-[11px] font-medium text-foreground"
+                                >
+                                  {commandOptionPreviewLabel(option)}
+                                </span>
+                              ))}
+                              {hiddenOptions.length > 0 && (
+                                <span className="shrink-0 border-l border-border pl-2 text-xs text-muted-foreground">
+                                  +{hiddenOptions.length} {hiddenOptionsAreOptional ? 'optional' : 'more'}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {item.section === 'application' && appName && (
+                            <span className="ml-auto hidden shrink-0 text-xs text-muted-foreground sm:inline">
+                              {appName}
+                            </span>
+                          )}
+                        </div>
+                        {item.description && (
+                          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                            {item.description}
+                          </p>
+                        )}
+                      </div>
+                    </button>
+                  </Fragment>
+                )
+              })}
+            </>
+          ) : (
+            <>
+              <div className="border-b border-border px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                {activeSuggestions[0]?.type === 'channel'
+                  ? t('chat.channels')
+                  : activeSuggestions[0]?.type === 'emoji'
+                    ? 'Emoji'
+                    : t('chat.membersAndRoles')}
+              </div>
+              {activeSuggestions.map((item, i) => (
+                <button
+                  key={`${item.type}-${item.id}`}
+                  type="button"
+                  onMouseDown={(e) => {
+                    // prevent blur before click registers
+                    e.preventDefault()
+                    selectSuggestion(item)
+                  }}
+                  className={`w-full flex items-center gap-3 px-3 py-2 text-sm transition-colors ${i === activeIdx
+                    ? 'bg-accent text-accent-foreground'
+                    : 'text-foreground hover:bg-accent/50'
+                    }`}
+                >
+                  {item.type === 'emoji' && item.emojiId && (
+                    <img
+                      src={emojiUrl(item.emojiId, 44)}
+                      alt={item.name}
+                      className="w-6 h-6 shrink-0 object-contain"
+                    />
+                  )}
+                  {item.type === 'emoji' && item.unicodeEmoji && (
+                    <span className="w-6 h-6 shrink-0 flex items-center justify-center text-xl leading-none">{item.unicodeEmoji}</span>
+                  )}
+                  {item.type === 'channel' && (
+                    <Hash className="w-4 h-4 shrink-0 text-muted-foreground" />
+                  )}
+                  {item.type === 'special' && (
+                    <div className="w-6 h-6 rounded-full bg-muted shrink-0 flex items-center justify-center text-[11px] font-semibold text-muted-foreground">
+                      @
+                    </div>
+                  )}
+                  {item.type === 'user' && (
+                    <div className="w-6 h-6 rounded-full bg-muted shrink-0 flex items-center justify-center text-[11px] font-semibold">
+                      {item.name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                  {item.type === 'role' && (
+                    <Shield
+                      className="w-4 h-4 shrink-0"
+                      style={{ color: roleColor(item.color) ?? 'var(--muted-foreground)' }}
+                    />
+                  )}
+                  <span className="font-medium truncate">{item.name}</span>
+                  {item.type === 'emoji' && item.serverName && (
+                    <span className="ml-auto text-xs text-muted-foreground shrink-0 pl-2 truncate max-w-[120px]">{item.serverName}</span>
+                  )}
+                  {item.type === 'role' && (
+                    <span className="ml-auto text-xs text-muted-foreground shrink-0">{t('chat.role')}</span>
+                  )}
+                </button>
+              ))}
+            </>
+          )}
         </div>
       )}
 
@@ -936,6 +1409,13 @@ const MentionInput = forwardRef<MentionInputHandle, Props>(function MentionInput
         {attachmentBar && (
           <div className="px-2 pt-2">
             {attachmentBar}
+          </div>
+        )}
+
+        {selectedApplicationCommand && activeCommandOption && (
+          <div className="flex items-center gap-2 border-b border-border/70 px-4 py-2 text-xs">
+            <span className="font-semibold text-foreground">{activeCommandOption.name}</span>
+            <span className="min-w-0 truncate text-muted-foreground">{activeCommandOption.description}</span>
           </div>
         )}
 
@@ -961,20 +1441,97 @@ const MentionInput = forwardRef<MentionInputHandle, Props>(function MentionInput
             </button>
           )}
 
-          <div
-            ref={editorRef}
-            contentEditable={!disabled}
-            suppressContentEditableWarning
-            onInput={handleInput}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            aria-disabled={disabled}
-            data-placeholder={t('chat.messagePlaceholder', { name: channelName ?? channelId })}
-            className={cn(
-              'mention-editor flex-1 min-h-[28px] max-h-48 overflow-y-auto outline-none text-sm text-foreground leading-6 break-words',
-              disabled && 'cursor-not-allowed text-muted-foreground',
-            )}
-          />
+          {selectedApplicationCommand ? (
+            <div className="flex min-h-[28px] min-w-0 flex-1 flex-wrap items-center gap-1.5 text-sm">
+              {!activeCommandOption && (
+                <input
+                  ref={commandOptionInputRef}
+                  readOnly
+                  aria-label={`/${selectedCommandDisplay}`}
+                  onKeyDown={handleCommandOptionKeyDown}
+                  className="sr-only"
+                />
+              )}
+              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded bg-muted text-muted-foreground">
+                <Bot className="h-4 w-4" />
+              </div>
+              <span className="shrink-0 font-semibold text-foreground">/{selectedCommandDisplay}</span>
+              {visibleOptionRows.map((option) => {
+                const value = commandOptionDrafts[option.name] ?? ''
+                const isActive = option.name === activeCommandOption?.name
+                return (
+                  <div
+                    key={option.name}
+                    className={cn(
+                      'flex min-h-7 max-w-full items-center overflow-hidden rounded border bg-background/50 text-sm',
+                      isActive ? 'border-sky-500 ring-1 ring-sky-500/60' : 'border-border',
+                    )}
+                    onMouseDown={(e) => {
+                      e.preventDefault()
+                      setActiveCommandOptionName(option.name)
+                      window.setTimeout(() => commandOptionInputRef.current?.focus(), 0)
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className="h-7 shrink-0 px-2 font-medium text-foreground"
+                      onClick={() => setActiveCommandOptionName(option.name)}
+                    >
+                      {option.name}
+                    </button>
+                    {(isActive || value) && (
+                      <input
+                        ref={isActive ? commandOptionInputRef : undefined}
+                        value={value}
+                        onChange={(e) => updateCommandOption(option.name, e.target.value)}
+                        onKeyDown={handleCommandOptionKeyDown}
+                        placeholder={optionPlaceholder(option)}
+                        className="h-7 min-w-[72px] flex-1 bg-muted/50 px-2 outline-none placeholder:text-muted-foreground"
+                      />
+                    )}
+                  </div>
+                )
+              })}
+              {hiddenOptionalOptions.length > 0 && (
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setActiveCommandOptionName(hiddenOptionalOptions[0]?.name ?? null)}
+                  className="h-7 shrink-0 rounded border border-border px-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  +{hiddenOptionalOptions.length} more
+                </button>
+              )}
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  resetApplicationCommandMode()
+                  clearEditor()
+                  window.setTimeout(() => editorRef.current?.focus(), 0)
+                }}
+                aria-label="Cancel command"
+                className="ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ) : (
+            <div
+              ref={editorRef}
+              contentEditable={!disabled}
+              suppressContentEditableWarning
+              onInput={handleInput}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              aria-disabled={disabled}
+              data-placeholder={t('chat.messagePlaceholder', { name: channelName ?? channelId })}
+              className={cn(
+                'mention-editor flex-1 min-h-[28px] max-h-48 overflow-y-auto outline-none text-sm text-foreground leading-6 break-words',
+                disabled && 'cursor-not-allowed text-muted-foreground',
+              )}
+            />
+          )}
 
           {/* GIF picker */}
           <button

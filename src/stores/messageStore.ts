@@ -3,6 +3,7 @@ import {
   revokePendingUploadAttachmentUrls,
   type PendingUploadAttachment,
 } from '@/lib/pendingAttachments'
+import { useInteractionStore } from '@/stores/interactionStore'
 import type { DtoAttachment, DtoChannel, DtoMessage, DtoMessageReaction } from '@/types'
 
 export type PendingMessageStatus = 'sending' | 'failed' | 'confirmed'
@@ -141,15 +142,18 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   messageRowKeys: {},
 
   // Real-time WS message — always newest, append to end
-  addMessage: (channelId, msg) =>
+  addMessage: (channelId, msg) => {
+    useInteractionStore.getState().removePendingInteractionForMessage(msg)
     set((state) => ({
       messages: {
         ...state.messages,
         [channelId]: upsertMessage(state.messages[channelId] ?? [], msg),
       },
-    })),
+    }))
+  },
 
   receiveMessage: (channelId, msg) => {
+    useInteractionStore.getState().removePendingInteractionForMessage(msg)
     let confirmedLocalId: string | null = null
 
     set((state) => {
@@ -201,13 +205,16 @@ export const useMessageStore = create<MessageState>((set, get) => ({
   },
 
   // Initial load from REST API — sort ascending so render order is always correct
-  setMessages: (channelId, msgs) =>
+  setMessages: (channelId, msgs) => {
+    msgs.forEach((msg) => useInteractionStore.getState().removePendingInteractionForMessage(msg))
     set((state) => ({
       messages: { ...state.messages, [channelId]: sortAsc(msgs) },
-    })),
+    }))
+  },
 
   // Paginated older-messages load — merge without duplicates, keep sorted ascending
-  prependMessages: (channelId, msgs) =>
+  prependMessages: (channelId, msgs) => {
+    msgs.forEach((msg) => useInteractionStore.getState().removePendingInteractionForMessage(msg))
     set((state) => {
       const existing = state.messages[channelId] ?? []
       const existingIds = new Set(existing.map((m) => String(m.id)))
@@ -216,10 +223,12 @@ export const useMessageStore = create<MessageState>((set, get) => ({
       return {
         messages: { ...state.messages, [channelId]: sortAsc([...unique, ...existing]) },
       }
-    }),
+    })
+  },
 
   // Paginated newer-messages load — merge without duplicates, keep sorted ascending
-  appendMessages: (channelId, msgs) =>
+  appendMessages: (channelId, msgs) => {
+    msgs.forEach((msg) => useInteractionStore.getState().removePendingInteractionForMessage(msg))
     set((state) => {
       const existing = state.messages[channelId] ?? []
       const existingIds = new Set(existing.map((m) => String(m.id)))
@@ -228,7 +237,8 @@ export const useMessageStore = create<MessageState>((set, get) => ({
       return {
         messages: { ...state.messages, [channelId]: sortAsc([...existing, ...unique]) },
       }
-    }),
+    })
+  },
 
   addPendingMessage: (pending) =>
     set((state) => ({

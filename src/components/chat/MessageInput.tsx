@@ -11,11 +11,18 @@ import { isSvgFileLike } from '@/lib/fileTypes'
 import type { PendingUploadAttachment } from '@/lib/pendingAttachments'
 import { buildMessagePreviewText } from '@/lib/messagePreview'
 import { parseInlineMessageContent, type MentionResolver } from '@/lib/messageParser'
+import { applicationCommandsApi, type ApplicationCommand, type InteractionOptionValue } from '@/lib/applicationCommandsApi'
 import {
   createMessageNonce,
   sendOptimisticChannelMessage,
 } from '@/lib/pendingMessageSend'
 import type { DtoMessage } from '@/types'
+import { useAuthStore } from '@/stores/authStore'
+import {
+  createPendingInteraction,
+  schedulePendingInteractionFailure,
+  useInteractionStore,
+} from '@/stores/interactionStore'
 
 // ── Slash commands ────────────────────────────────────────────────────────────
 
@@ -126,6 +133,10 @@ const MessageInput = forwardRef<MessageInputHandle, Props>(function MessageInput
   const [pendingAttachments, setPendingAttachments] = useState<PendingUploadAttachment[]>([])
   const { t } = useTranslation()
   const contentHosts = useGifStore((s) => s.contentHosts)
+  const currentUser = useAuthStore((s) => s.user)
+  const addPendingInteraction = useInteractionStore((s) => s.addPendingInteraction)
+  const attachInteractionId = useInteractionStore((s) => s.attachInteractionId)
+  const markInteractionFailed = useInteractionStore((s) => s.markInteractionFailed)
   const replyToId = replyTo?.id != null ? String(replyTo.id) : null
   const replyReference = replyTo?.id != null ? (replyTo.id as unknown as number) : undefined
   const replyAuthorName = replyTo?.author?.name?.trim() || t('common.unknown')
@@ -354,6 +365,36 @@ const MessageInput = forwardRef<MessageInputHandle, Props>(function MessageInput
     }
   }
 
+  async function invokeApplicationCommand(command: ApplicationCommand, options: InteractionOptionValue[] = []) {
+    if (disabled) return
+    if (currentUser?.id == null) {
+      toast.error(t('chat.commandInvokeFailed', { defaultValue: 'Command failed to start' }))
+      return
+    }
+    const pendingInteraction = createPendingInteraction({
+      channelId,
+      command,
+      options,
+      userId: String(currentUser.id),
+      userName: currentUser.name ?? 'You',
+      userAvatarUrl: currentUser.avatar?.url ?? null,
+    })
+    addPendingInteraction(pendingInteraction)
+    try {
+      const response = await applicationCommandsApi.invoke({
+        command_id: command.id,
+        channel_id: channelId,
+        options,
+      })
+      attachInteractionId(pendingInteraction.localId, String(response.interaction_id))
+      schedulePendingInteractionFailure(pendingInteraction.localId)
+      onMessageQueued?.()
+    } catch {
+      markInteractionFailed(pendingInteraction.localId)
+      toast.error(t('chat.commandInvokeFailed', { defaultValue: 'Command failed to start' }))
+    }
+  }
+
   // ── Typing indicator ──────────────────────────────────────────────────────
 
   function handleTyping() {
@@ -440,6 +481,7 @@ const MessageInput = forwardRef<MessageInputHandle, Props>(function MessageInput
         channelId={channelId}
         channelName={channelName}
         onSend={send}
+        onApplicationCommand={invokeApplicationCommand}
         onTyping={handleTyping}
         disabled={disabled}
         onAttachClick={handleAttachClick}

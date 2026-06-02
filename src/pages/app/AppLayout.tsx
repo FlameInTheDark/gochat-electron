@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
+import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@/stores/authStore'
 import { useWebSocket } from '@/hooks/useWebSocket'
 import { useIdlePresence } from '@/hooks/useIdlePresence'
@@ -15,6 +16,7 @@ import DMCallIncomingModal from '@/components/dm/DMCallIncomingModal'
 import UserProfilePanel from '@/components/layout/UserProfilePanel'
 import type { DtoUser } from '@/types'
 import { usePresenceStore, type UserStatus } from '@/stores/presenceStore'
+
 import { useVoiceStore } from '@/stores/voiceStore'
 import { sendPresenceStatus } from '@/services/wsService'
 import { useFolderStore } from '@/stores/folderStore'
@@ -32,19 +34,150 @@ import { voiceSettingsFromDevices } from '@/lib/voiceSettings'
 import { mergeUserPreservingAssets } from '@/lib/entityMerge'
 import { hasDMCallParticipants, normalizeDMCall, type RawDMCallSummary } from '@/services/dmCallApi'
 import { useDMCallStore } from '@/stores/dmCallStore'
+import { useGatewayConnectionStore } from '@/stores/gatewayConnectionStore'
+import type { UserUserSettingsResponse } from '@/client'
 
 const VALID_STATUSES = new Set<string>(['online', 'idle', 'dnd', 'offline'])
 
-// ── Inner component ────────────────────────────────────────────────────────
-// Only mounts once auth is confirmed. Tying useWebSocket() here means:
-//   • WS connects AFTER the token is validated (and silently refreshed if needed)
-//   • WS disconnects automatically when the user logs out (component unmounts)
-//   • No speculative connection with a stale/invalid token
-function AuthenticatedApp() {
-  useWebSocket()
+function applySettingsBootstrap(
+  queryClient: QueryClient,
+  data: UserUserSettingsResponse,
+  currentUserId: string,
+) {
+  const settings = data.settings
+  if (settings) {
+    queryClient.setQueryData(['user-settings'], settings)
+
+    const savedStatus = settings.status?.status
+    const savedCustomText = settings.status?.custom_status_text ?? ''
+    const effectiveStatus = (savedStatus && VALID_STATUSES.has(savedStatus)
+      ? savedStatus : 'online') as UserStatus
+    const presenceStore = usePresenceStore.getState()
+    presenceStore.setCustomStatusText(savedCustomText)
+    if (effectiveStatus === 'online') {
+      presenceStore.setManualStatus(null)
+      presenceStore.setSessionStatus('online')
+    } else {
+      presenceStore.setManualStatus(effectiveStatus)
+    }
+    sendPresenceStatus(effectiveStatus, savedCustomText, { manual: true })
+
+    useFolderStore.getState().loadFromSettings(settings.guild_folders, settings.guilds)
+
+    const savedFavoriteGifs = settings.favorite_gifs
+    if (Array.isArray(savedFavoriteGifs)) {
+      useGifStore.getState().setFavorites(savedFavoriteGifs)
+    }
+
+    const savedLanguage = settings.language
+    if (savedLanguage && savedLanguage.trim()) {
+      void i18n.changeLanguage(savedLanguage)
+    }
+
+    const voiceSettings = voiceSettingsFromDevices(settings.devices)
+    if (voiceSettings) {
+      useVoiceStore.getState().setSettings(voiceSettings)
+    }
+  }
+
+  useReadStateStore.getState().setFromSettings(data)
+
+  const rawDMCalls = ((data as unknown as { dm_calls?: RawDMCallSummary[] }).dm_calls ?? [])
+  const dmCalls = rawDMCalls
+    .map(normalizeDMCall)
+    .filter((call) => call.callId && call.channelId && hasDMCallParticipants(call))
+  const dmCallStore = useDMCallStore.getState()
+  dmCallStore.setCalls(dmCalls)
+  const incoming = dmCalls.find((call) =>
+    call.recipientId === currentUserId
+    && call.callerId !== currentUserId
+    && !call.dismissed
+  )
+  dmCallStore.setIncoming(incoming?.channelId ?? null)
+
+  const rawMentions = data.mentions ?? {}
+  const readStates = useReadStateStore.getState().readStates
+  const channelGuildMap: Record<string, string> = {}
+  for (const [guildId, channelMap] of Object.entries(data.guilds_last_messages ?? {})) {
+    for (const channelId of Object.keys(channelMap)) {
+      channelGuildMap[channelId] = guildId
+    }
+  }
+
+  const mentionSeed: Record<string, { messageIds: string[]; guildId: string | null }> = {}
+  for (const [channelId, items] of Object.entries(rawMentions)) {
+    if (!Array.isArray(items) || !items.length) continue
+    const guildId = channelGuildMap[channelId] ?? null
+    let messageIds = items
+      .map((m) => {
+        const raw = m as unknown as Record<string, unknown>
+        const msgId = (raw['MessageId'] ?? raw['messageId']) as string | number | undefined
+        return msgId != null ? String(msgId) : null
+      })
+      .filter((msgId): msgId is string => msgId != null)
+    const lastRead = readStates[channelId]
+    if (lastRead) {
+      messageIds = messageIds.filter((msgId) => compareSnowflakes(msgId, lastRead) > 0)
+    }
+    if (messageIds.length > 0) {
+      mentionSeed[channelId] = { messageIds, guildId }
+    }
+  }
+  useMentionStore.getState().seedMentions(mentionSeed)
+
+  const guildEmojis = data.guild_emojis
+  if (guildEmojis) {
+    const emojiStore = useEmojiStore.getState()
+    for (const [guildId, emojiRefs] of Object.entries(guildEmojis)) {
+      emojiStore.setGuildEmojis(
+        guildId,
+        (emojiRefs ?? []).map((emoji) => ({
+          id: String(emoji.id ?? ''),
+          name: String(emoji.name ?? ''),
+          guild_id: guildId,
+        })),
+      )
+    }
+  }
+
+  const contentHosts = data.content_hosts
+  if (Array.isArray(contentHosts)) {
+    useGifStore.getState().setContentHosts(contentHosts)
+  }
+}
+
+// ── Inner components ───────────────────────────────────────────────────────
+// The route tree only mounts after the gateway sends READY. Before that, the
+// app keeps showing the loading screen so channel/server queries cannot race
+// ahead of the realtime session and its bootstrap cache payload.
+function ConnectedAppShell() {
+  const queryClient = useQueryClient()
+
+  useEffect(() => {
+    let cancelled = false
+
+    queryClient
+      .fetchQuery({
+        queryKey: ['user-settings-bootstrap'],
+        queryFn: () => userApi.userMeSettingsGet({}).then((r) => r.data),
+        staleTime: 60_000,
+      })
+      .then((data) => {
+        if (cancelled) return
+        const currentUserId = String(useAuthStore.getState().user?.id ?? '')
+        applySettingsBootstrap(queryClient, data, currentUserId)
+      })
+      .catch(() => {
+        // Non-critical: gateway READY already provided the minimum bootstrap.
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [queryClient])
+
   useIdlePresence()
   useDeepLink()
-
   // Keep authStore user in sync with WS t=406 profile update events
   useEffect(() => {
     const handler = (e: Event) => {
@@ -72,6 +205,15 @@ function AuthenticatedApp() {
   )
 }
 
+function AuthenticatedApp() {
+  useWebSocket()
+  const gatewayReady = useGatewayConnectionStore((s) => s.ready)
+
+  if (!gatewayReady) return <LoadingScreen />
+
+  return <ConnectedAppShell />
+}
+
 // ── Loading screen ─────────────────────────────────────────────────────────
 function LoadingScreen() {
   return (
@@ -90,10 +232,10 @@ function LoadingScreen() {
 //      → if expired: the 401 interceptor on axiosInstance transparently uses
 //        the refresh token to obtain a new access token, then retries
 //      → if both tokens are invalid/absent: logout + redirect to /
-//   2. On success: set the user in authStore, unmount loading screen
+//   2. On success: set the user in authStore
 //   3. AuthenticatedApp mounts → useWebSocket() connects
-//   4. WS hello received → guild subscriptions sent (resubscribe)
-//   5. Child components mount and fetch their own data (guilds, channels, …)
+//   4. WS READY seeds bootstrap caches and guild subscriptions
+//   5. Child components mount and fetch their own data (channels, members, …)
 export default function AppLayout() {
   const navigate = useNavigate()
   const token = useAuthStore((s) => s.token)
@@ -150,17 +292,11 @@ export default function AppLayout() {
     const baseUrl = getApiBaseUrl()
     const controller = new AbortController()
 
-    // Fetch user identity and settings in parallel.
-    // axiosInstance carries the request interceptor (Authorization header) and
-    // the response interceptor (401 → refresh token → retry). Plain axios does
-    // not, so an expired access token would incorrectly force a logout here.
-    // Settings fetch is non-critical — a failure is swallowed so it never
-    // blocks auth or causes a spurious logout.
-    Promise.all([
-      axiosInstance.get<DtoUser>(`${baseUrl}/user/me`, { signal: controller.signal }),
-      userApi.userMeSettingsGet({}, { signal: controller.signal }).catch(() => null),
-    ])
-      .then(([userRes, settingsRes]) => {
+    // Validate user identity only. All non-auth bootstrap data waits until the
+    // gateway sends READY so the app does not mount around a missing WS session.
+    axiosInstance
+      .get<DtoUser>(`${baseUrl}/user/me`, { signal: controller.signal })
+      .then((userRes) => {
         if (userRes.data) {
           setUser(userRes.data)
         } else {
@@ -168,117 +304,6 @@ export default function AppLayout() {
         }
         // Mark this token as validated so future silent refreshes are skipped.
         validatedTokenRef.current = token
-        // Restore saved presence status + custom status text before the WS
-        // connects so resubscribe() sends the correct op:3 on the very first hello.
-        const savedStatus = settingsRes?.data?.settings?.status?.status
-        const savedCustomText = settingsRes?.data?.settings?.status?.custom_status_text ?? ''
-        if (savedCustomText) {
-          usePresenceStore.getState().setCustomStatusText(savedCustomText)
-        }
-        const effectiveStatus = (savedStatus && VALID_STATUSES.has(savedStatus)
-          ? savedStatus : 'online') as UserStatus
-        if (savedStatus && VALID_STATUSES.has(savedStatus)) {
-          usePresenceStore.getState().setOwnStatus(effectiveStatus)
-        }
-        // Seeds wsService module-level caches; socket not open yet so no actual send
-        sendPresenceStatus(effectiveStatus, savedCustomText)
-        // Restore guild folder layout + ordering only when settings actually
-        // loaded. A transient settings failure must not replace saved order with
-        // the backend guild-list fallback.
-        if (settingsRes?.data?.settings) {
-          useFolderStore.getState().loadFromSettings(
-            settingsRes.data.settings.guild_folders,
-            settingsRes.data.settings.guilds,
-          )
-        }
-        // Load per-channel read states and latest-message IDs so pagination can
-        // determine where to scroll on channel open (unread separator position).
-        if (settingsRes?.data) {
-          useReadStateStore.getState().setFromSettings(settingsRes.data)
-
-          const rawDMCalls = ((settingsRes.data as unknown as { dm_calls?: RawDMCallSummary[] }).dm_calls ?? [])
-          const dmCalls = rawDMCalls
-            .map(normalizeDMCall)
-            .filter((call) => call.callId && call.channelId && hasDMCallParticipants(call))
-          const currentUserId = String(userRes.data.id ?? '')
-          const dmCallStore = useDMCallStore.getState()
-          dmCallStore.setCalls(dmCalls)
-          const incoming = dmCalls.find((call) =>
-            call.recipientId === currentUserId
-            && call.callerId !== currentUserId
-            && !call.dismissed
-          )
-          dmCallStore.setIncoming(incoming?.channelId ?? null)
-
-          // Seed mention badges from the `mentions` snapshot in the settings response.
-          // The Go server sends PascalCase keys (ChannelId, MessageId) at runtime,
-          // not the camelCase names in the generated TypeScript types.
-          // guildId is not in the mention object — derive it from guilds_last_messages.
-          const rawMentions = settingsRes.data.mentions ?? {}
-          const readStates = useReadStateStore.getState().readStates
-          // Build channelId → guildId reverse lookup from guilds_last_messages
-          const channelGuildMap: Record<string, string> = {}
-          for (const [gId, channelMap] of Object.entries(settingsRes.data.guilds_last_messages ?? {})) {
-            for (const chId of Object.keys(channelMap)) {
-              channelGuildMap[chId] = gId
-            }
-          }
-          const mentionSeed: Record<string, { messageIds: string[]; guildId: string | null }> = {}
-          for (const [channelId, items] of Object.entries(rawMentions)) {
-            if (!Array.isArray(items) || !items.length) continue
-            const guildId = channelGuildMap[channelId] ?? null
-            let messageIds = items
-              .map((m) => {
-                const raw = m as unknown as Record<string, unknown>
-                const msgId = (raw['MessageId'] ?? raw['messageId']) as string | number | undefined
-                return msgId != null ? String(msgId) : null
-              })
-              .filter((msgId): msgId is string => msgId != null)
-            const lastRead = readStates[channelId]
-            if (lastRead) {
-              messageIds = messageIds.filter((msgId) => compareSnowflakes(msgId, lastRead) > 0)
-            }
-            if (messageIds.length > 0) {
-              mentionSeed[channelId] = { messageIds, guildId }
-            }
-          }
-          useMentionStore.getState().seedMentions(mentionSeed)
-        }
-        // Seed custom emoji store from guild_emojis in settings
-        const guildEmojis = settingsRes?.data?.guild_emojis
-        if (guildEmojis) {
-          const emojiStore = useEmojiStore.getState()
-          for (const [guildId, emojiRefs] of Object.entries(guildEmojis)) {
-            emojiStore.setGuildEmojis(
-              guildId,
-              (emojiRefs ?? []).map((e) => ({
-                id: String(e.id ?? ''),
-                name: String(e.name ?? ''),
-                guild_id: guildId,
-              })),
-            )
-          }
-        }
-        // Restore favorite GIFs
-        const savedFavoriteGifs = settingsRes?.data?.settings?.favorite_gifs
-        if (Array.isArray(savedFavoriteGifs)) {
-          useGifStore.getState().setFavorites(savedFavoriteGifs)
-        }
-        // Load trusted content hosts for inline GIF rendering
-        const contentHosts = settingsRes?.data?.content_hosts
-        if (Array.isArray(contentHosts)) {
-          useGifStore.getState().setContentHosts(contentHosts)
-        }
-        // Apply saved display language
-        const savedLanguage = settingsRes?.data?.settings?.language
-        if (savedLanguage && savedLanguage.trim()) {
-          void i18n.changeLanguage(savedLanguage)
-        }
-        // Restore voice settings
-        const voiceSettings = voiceSettingsFromDevices(settingsRes?.data?.settings?.devices)
-        if (voiceSettings) {
-          useVoiceStore.getState().setSettings(voiceSettings)
-        }
       })
       .catch(() => {
         // Aborted by StrictMode cleanup — the effect will re-run; do nothing.
@@ -297,7 +322,7 @@ export default function AppLayout() {
     return () => {
       controller.abort()
     }
-    // navigate/setUser are stable refs
+    // token is the only real dependency; navigate/setUser are stable refs
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, refreshToken, authProblemOpen])
 

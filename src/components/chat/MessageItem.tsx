@@ -66,6 +66,7 @@ import EmojiPicker, { type CustomEmojiGroup } from '@/components/chat/EmojiPicke
 import InviteEmbed from '@/components/chat/InviteEmbed'
 import MessageEmbed from '@/components/chat/MessageEmbed'
 import GifEmbed from '@/components/chat/GifEmbed'
+import ApplicationCommandUsageHeader from '@/components/chat/message-list/ApplicationCommandUsageHeader'
 import { extractGifUrls, isGifOnlyMessage } from '@/lib/gifUrls'
 import { useGifStore } from '@/stores/gifStore'
 import { subscribeChannel, unsubscribeChannel } from '@/services/wsService'
@@ -74,6 +75,7 @@ import { useEmojiStore } from '@/stores/emojiStore'
 import { MessageChannelChannelIdGetDirectionEnum, type DtoRole } from '@/client'
 import { allEmojis, emojiIndex } from '@/lib/emojiData'
 import { useGuildPermissions } from '@/hooks/useGuildPermissions'
+import BotBadge from '@/components/ui/BotBadge'
 
 /** Extract unique invite codes from a message string.
  *  Matches URLs of the form: http(s)://host/invite/CODE
@@ -142,6 +144,12 @@ const MESSAGE_REFERENCE_FETCH_LIMIT = 20
 const RECENT_EMOJI_KEY = 'gochat_recent_emojis'
 const QUICK_REACTION_COUNT = 3
 const DEFAULT_QUICK_REACTIONS = ['👍', '❤️', '😂', '🎉', '😮', '😢']
+type MessageActionMenuComponent = ComponentType<{
+  children?: ReactNode
+  className?: string
+  disabled?: boolean
+  onClick?: () => void
+}>
 
 // Default English join messages (fallback)
 const DEFAULT_JOIN_MESSAGES = [
@@ -363,6 +371,25 @@ export default function MessageItem({
     : `pending:${message.nonce ?? authorName}`
   const isOwn = currentUser?.id !== undefined && String(message.author?.id) === String(currentUser.id)
   const isPendingMessage = deliveryState != null
+  const interactionUserId = message.interaction?.user_id != null ? String(message.interaction.user_id) : null
+  const interactionCommandName = message.interaction?.command_name?.trim() || null
+  const interactionMember = useMemo(
+    () => interactionUserId
+      ? members.find((m) => String(m.user?.id) === interactionUserId)
+      : undefined,
+    [interactionUserId, members],
+  )
+  const interactionUserName = interactionUserId
+    ? resolver?.user?.(interactionUserId)
+      ?? interactionMember?.username
+      ?? interactionMember?.user?.name
+      ?? `User ${interactionUserId}`
+    : null
+  const interactionUserRoleColor = useMemo(
+    () => getTopRoleColor(interactionMember?.roles, roles),
+    [interactionMember?.roles, roles],
+  )
+  const showInteractionUsage = interactionUserId != null && interactionCommandName != null
   const isInformationalMessage =
     message.type === JOIN_MESSAGE_TYPE ||
     message.type === THREAD_CREATED_MESSAGE_TYPE ||
@@ -679,8 +706,8 @@ export default function MessageItem({
   }
 
   function renderMessageActionMenu(
-    Item: ComponentType<any>,
-    Separator: ComponentType<any>,
+    Item: MessageActionMenuComponent,
+    Separator: ComponentType,
     copySegmentExtra?: ReactNode,
   ) {
     return (
@@ -1058,6 +1085,16 @@ export default function MessageItem({
                 </DropdownMenu>
               </div>
             )}
+            {showInteractionUsage && (
+              <ApplicationCommandUsageHeader
+                userId={interactionUserId}
+                userName={interactionUserName ?? t('common.unknown')}
+                userAvatarUrl={interactionMember?.user?.avatar?.url}
+                userRoleColor={interactionUserRoleColor}
+                commandName={interactionCommandName}
+                resolver={resolver}
+              />
+            )}
             {showReplyPreview && (
               <div
                 role={canOpenReference ? 'button' : undefined}
@@ -1096,6 +1133,7 @@ export default function MessageItem({
                       {replyPreviewAuthorName}
                     </button>
                   )}
+                  {referencedMessage?.author?.is_bot && <BotBadge />}
                   <div className="truncate">
                     {parseInlineMessageContent(replyPreviewText, resolver, `reply-preview-${messageId}`)}
                   </div>
@@ -1103,7 +1141,7 @@ export default function MessageItem({
               </div>
             )}
             <div className="flex items-start gap-3">
-            {isGrouped && !showReplyPreview ? (
+            {isGrouped && !showReplyPreview && !showInteractionUsage ? (
               /* Compact grouped row: no avatar — hover reveals timestamp in left gutter */
               <div className="w-9 shrink-0 flex items-center justify-end mt-0.5">
                 <span className="text-[10px] text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity leading-none tabular-nums select-none">
@@ -1131,7 +1169,7 @@ export default function MessageItem({
             )}
 
             <div className="min-w-0 flex-1">
-              {(!isGrouped || showReplyPreview) && !useInlineInformationalLayout && (
+              {(!isGrouped || showReplyPreview || showInteractionUsage) && !useInlineInformationalLayout && (
                 <div className="flex items-baseline gap-2">
                   {/* Clickable author name */}
                   {renderAuthorContextMenu(
@@ -1143,6 +1181,7 @@ export default function MessageItem({
                       {authorName}
                     </button>,
                   )}
+                  {message.author?.is_bot && <BotBadge />}
                   <Tooltip delayDuration={400}>
                     <TooltipTrigger asChild>
                       <span className="text-xs text-muted-foreground tabular-nums">
@@ -1202,6 +1241,7 @@ export default function MessageItem({
                           {authorName}
                         </button>,
                       )}
+                      {message.author?.is_bot && <BotBadge />}
                       <span>{informationalContent}</span>
                       <Tooltip delayDuration={400}>
                         <TooltipTrigger asChild>
@@ -1299,10 +1339,10 @@ export default function MessageItem({
                         <div className="max-w-full min-w-0">
                           {threadPreview.previewMessage?.author?.name && (
                             <div
-                              className="truncate text-xs font-medium text-foreground"
+                              className="truncate text-xs font-medium text-foreground inline-flex items-center gap-1"
                               style={previewAuthorRoleColor ? { color: previewAuthorRoleColor } : undefined}
                             >
-                              {threadPreview.previewMessage.author.name}
+                              {threadPreview.previewMessage.author.name}{threadPreview.previewMessage.author?.is_bot && <BotBadge />}
                             </div>
                           )}
                           <div className="mt-0.5 truncate text-xs leading-relaxed text-muted-foreground">

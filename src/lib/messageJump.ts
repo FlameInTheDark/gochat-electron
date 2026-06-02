@@ -1,4 +1,5 @@
 import type { PendingMessageAttachmentDraft } from '@/stores/messageStore'
+import type { PendingInteraction } from '@/stores/interactionStore'
 import type { DtoMessage } from '@/types'
 
 export type JumpBehavior = 'direct-scroll' | 'preload-window'
@@ -23,6 +24,12 @@ export interface MessageTimelineMessageRow {
   deliveryState?: 'sending' | 'failed'
   pendingAttachmentDrafts?: PendingMessageAttachmentDraft[]
   optimisticCreatedAt?: number
+}
+
+export interface MessageTimelineApplicationCommandRow {
+  kind: 'application-command'
+  key: string
+  interaction: PendingInteraction
 }
 
 export interface MessageTimelineDateDividerRow {
@@ -53,6 +60,7 @@ export interface MessageTimelineGapRow {
 
 export type MessageTimelineRow =
   | MessageTimelineMessageRow
+  | MessageTimelineApplicationCommandRow
   | MessageTimelineDateDividerRow
   | MessageTimelineUnreadSeparatorRow
   | MessageTimelineConversationStartRow

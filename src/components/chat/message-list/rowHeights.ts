@@ -1,5 +1,7 @@
 import type { MessageTimelineMessageRow, MessageTimelineRow } from '@/lib/messageJump'
 
+const APPLICATION_COMMAND_ROW_HEIGHT = 104
+
 function estimateMessageRowHeight(row: MessageTimelineMessageRow, chatSpacing: number): number {
   let height = row.grouped ? 30 : 76
   const contentLength = row.message.content?.length ?? 0
@@ -42,6 +44,8 @@ export function getEstimatedMessageListRowHeight(
       return 28
     case 'gap':
       return Math.max(row.heightPx, options.minGapHeightPx)
+    case 'application-command':
+      return APPLICATION_COMMAND_ROW_HEIGHT + options.chatSpacing
     case 'message':
       return estimateMessageRowHeight(row, options.chatSpacing)
   }
